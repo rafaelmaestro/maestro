@@ -122,6 +122,20 @@ body.resizing{cursor:col-resize;user-select:none}
 .fmenu button:hover{background:var(--accent-soft)}
 .fmenu button.danger{color:var(--bad)}
 .fmenu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+.fmenu button{display:flex;gap:16px;justify-content:space-between;align-items:center}
+.fmenu button kbd{border:0;background:none;padding:0;color:var(--comment)}
+.fmenu button.off{opacity:.45;cursor:default}.fmenu button.off:hover{background:none}
+.flist button.sel{box-shadow:inset 2px 0 0 var(--accent)}
+.flist button.cut .nm{opacity:.5}
+.flist button.drop,.flist.drop{background:var(--accent-soft)}
+.flist .fsearch{padding:4px 8px 6px}
+.flist .fsearch input{width:100%;background:var(--win);border:1px solid var(--line);border-radius:4px;color:var(--fg);font:12px var(--mono);padding:3px 6px;outline:none}
+.flist .fsearch input:focus{border-color:var(--accent)}
+.flist button.hit{grid-template-columns:1fr;gap:0}
+.flist .ht{font:12px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:8px}
+.flist .ht mark{background:rgba(241,250,140,.25);color:var(--fg);border-radius:2px}
+.edwrap .goto{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:9;width:260px;background:var(--raise);border:1px solid var(--accent);border-radius:6px;box-shadow:var(--shadow);padding:6px}
+.edwrap .goto input{width:100%;background:var(--win);border:1px solid var(--line);border-radius:4px;color:var(--fg);font:13px var(--mono);padding:4px 8px;outline:none}
 
 /* terminal (herdr dentro, visual Ghostty) */
 /* valores do ~/.config/ghostty/config + defaults do Ghostty: cursor block, unfocused-split-opacity 0.7 */
@@ -868,8 +882,10 @@ function renderLeft(){
       h+=`<button data-ch="${c.path}"><span class="nm"><span class="dir">${dir}</span>${nm}</span><span class="st ${n?'d':''}">${n?n+' coment.':(c.isNew?'novo ':'')+`+${a} −${r}`}</span></button>`; });
     if(f.changes.length) h+=`<div class="none">${f.uncommitted?`${f.uncommitted} arquivo não commitado · `:''}base <span class="mono">main</span>${nd?` · <span style="color:var(--draft)">${nd} comentário${nd>1?'s':''} para o Claude</span>`:''}</div>`;
   } else { const nmIn=v=>`<div class="fname"><input id="fName" value="${esc(v)}" spellcheck="false" aria-label="Nome"></div>`;
+    h+=`<div class="fsearch"><input id="fq" value="${esc(S.fq||'')}" placeholder="buscar no projeto" spellcheck="false" aria-label="Buscar no projeto"></div>`;
+    if(S.fq&&S.fhits){ h+=S.fhits.length?S.fhits.map(x=>`<button data-hit="${x.p}" data-ln="${x.ln}" class="hit"><span class="nm"><span class="dir">${x.p}:${x.ln}</span></span><span class="ht">${hitHl(x.t,S.fq)}</span></button>`).join('')+`<div class="none">${S.fhits.length} resultado${S.fhits.length>1?'s':''} · Esc volta à árvore</div>`:'<div class="none">Nada encontrado. Esc volta à árvore.</div>'; el.innerHTML=h+'</div>'; bindLeft(el); return; }
     if(S.naming&&S.naming.kind!=='rename') h+=nmIn(S.naming.p?S.naming.p+'/':'');
-    Object.keys(F).forEach(p=>{ if(S.naming&&S.naming.kind==='rename'&&S.naming.p===p){ h+=nmIn(p); return; } const [dir,nm]=split(p); h+=`<button data-file="${p}" class="${S.file===p&&S.rtab==='file'?'on':''}"><span class="nm"><span class="dir">${dir}</span>${nm}</span><span class="st">${F[p].text!==F[p].saved?'●':''}</span></button>`; }); }
+    Object.keys(F).forEach(p=>{ if(S.naming&&S.naming.kind==='rename'&&S.naming.p===p){ h+=nmIn(p); return; } const [dir,nm]=split(p); h+=`<button data-file="${p}" draggable="true" class="${S.file===p&&S.rtab==='file'?'on':''} ${S.fsel===p?'sel':''} ${S.clip&&S.clip.op==='cut'&&S.clip.p===p?'cut':''}"><span class="nm"><span class="dir">${dir}</span>${nm}</span><span class="st">${F[p].text!==F[p].saved?'●':''}</span></button>`; }); }
   el.innerHTML=h+'</div>';
   bindLeft(el);
 }
@@ -919,9 +935,11 @@ function toggleDb(i){ const d=DBS[i];
   setTimeout(()=>{ if(d.fail){ d.st='down'; toast(`${d.n} caiu: ${d.fail}`); } else { d.st='up'; d.since='agora'; toast(`${d.n} de pé em :${d.port}`); } render(); },900); }
 function fileMenu(e,p){ closeFileMenu(); const dir=p?split(p)[0].replace(/\/$/,''):'';
   const m=document.createElement('div'); m.className='fmenu'; m.id='fMenu'; m.style.left=e.clientX+'px'; m.style.top=e.clientY+'px';
+  const paste=['Colar',()=>pasteIn(dir?dir+'/':''),S.clip?'':'off','Ctrl+V'];
   const it=[['Novo arquivo',()=>{ S.naming={kind:'new',p:dir}; renderLeft(); }],['Nova pasta',()=>{ S.naming={kind:'newdir',p:dir}; renderLeft(); }]];
-  if(p) it.push(null,['Renomear',()=>{ S.naming={kind:'rename',p}; renderLeft(); }],['Excluir',()=>delFile(p),'danger']);
-  it.forEach(x=>{ if(!x){ m.insertAdjacentHTML('beforeend','<hr>'); return; } const b=document.createElement('button'); b.textContent=x[0]; if(x[2]) b.className=x[2]; b.onclick=()=>{ closeFileMenu(); x[1](); }; m.appendChild(b); });
+  if(p) it.push(null,['Recortar',()=>{ S.clip={op:'cut',p}; renderLeft(); },'','Ctrl+X'],['Copiar',()=>{ S.clip={op:'copy',p}; },'','Ctrl+C'],paste,['Duplicar',()=>{ S.clip={op:'copy',p}; pasteIn(split(p)[0]); }],null,['Copiar caminho',()=>toast(`Copiado: ${p}`)],null,['Renomear',()=>{ S.naming={kind:'rename',p}; renderLeft(); },'','F2'],['Excluir',()=>delFile(p),'danger','Delete']);
+  else it.push(null,paste);
+  it.forEach(x=>{ if(!x){ m.insertAdjacentHTML('beforeend','<hr>'); return; } const b=document.createElement('button'); b.innerHTML=`<span>${x[0]}</span>${x[3]?`<kbd>${x[3]}</kbd>`:''}`; if(x[2]) b.className=x[2]; if(x[2]==='off') b.disabled=true; b.onclick=()=>{ closeFileMenu(); x[1](); }; m.appendChild(b); });
   document.body.appendChild(m); setTimeout(()=>{ document.addEventListener('mousedown',closeFileMenuOut); document.addEventListener('keydown',closeFileMenuOut,true); }); }
 function closeFileMenuOut(e){ if(e.type==='keydown'?e.key==='Escape':!e.target.closest('#fMenu')){ if(e.type==='keydown') e.stopPropagation(); closeFileMenu(); } }
 function closeFileMenu(){ const m=$('#fMenu'); if(m) m.remove(); document.removeEventListener('mousedown',closeFileMenuOut); document.removeEventListener('keydown',closeFileMenuOut,true); }
@@ -938,6 +956,46 @@ function delFile(p){ if(F[p].text!==F[p].saved){ toast(`${p} tem alterações n�
   confirmDlg(`Excluir ${p}?`,'Some do disco. O que o git já conhece volta com git restore; o resto não volta.','Excluir',()=>{
     delete F[p]; if(S.open){ const i=S.open.indexOf(p); if(i>=0){ S.open.splice(i,1); if(S.file===p) S.file=S.open[Math.min(i,S.open.length-1)]||null; if(!S.file&&S.rtab==='file') S.rtab='review'; } }
     toast(`${p} excluído`); render(); },true); }
+function dropMark(dir){ document.querySelectorAll('.flist .drop').forEach(x=>x.classList.remove('drop')); const fl=document.querySelector('.flist'); if(dir===null||!fl) return;
+  if(dir==='') fl.classList.add('drop'); else document.querySelectorAll('.flist [data-file]').forEach(b=>{ if(b.dataset.file.startsWith(dir)) b.classList.add('drop'); }); }
+function moveTo(p,dir){ const to=dir+split(p)[1]; if(to===p) return; if(F[to]){ toast(`${to} já existe`); return; }
+  if(F[p].text!==F[p].saved){ toast(`${p} tem alterações não salvas: salve antes de mover`); return; }
+  F[to]=F[p]; delete F[p]; if(S.open){ const i=S.open.indexOf(p); if(i>=0) S.open[i]=to; } if(S.file===p) S.file=to; S.fsel=to; toast(`Movido para ${dir||'a raiz'}`); render(); }
+function freeName(dir,name){ const i=name.lastIndexOf('.'), b=i>0?name.slice(0,i):name, x=i>0?name.slice(i):''; let n=dir+b+' cópia'+x, k=2; while(F[n]) n=dir+b+' cópia '+(k++)+x; return n; }
+function pasteIn(dir){ const c=S.clip; if(!c||!F[c.p]){ toast('Nada para colar'); return; }
+  if(c.op==='cut'){ S.clip=null; moveTo(c.p,dir); return; }
+  const to=freeName(dir,split(c.p)[1]); F[to]={text:F[c.p].saved,saved:F[c.p].saved}; S.fsel=to; toast(`Colado: ${to}`); renderLeft(); }
+function treeKey(e){ const rows=[...document.querySelectorAll('.flist [data-file]')]; const i=rows.findIndex(b=>b.dataset.file===S.fsel); const p=S.fsel, ctrl=e.ctrlKey||e.metaKey;
+  if(e.target.tagName==='INPUT') return;
+  const go=j=>{ const b=rows[Math.max(0,Math.min(rows.length-1,j))]; if(b){ b.focus(); } };
+  if(e.key==='ArrowDown'){ e.preventDefault(); e.stopPropagation(); go(i+1); } else if(e.key==='ArrowUp'){ e.preventDefault(); e.stopPropagation(); go(i-1); }
+  else if(!p) return;
+  else if(e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); openFile(p); } else if(e.key==='F2'){ e.preventDefault(); e.stopPropagation(); S.naming={kind:'rename',p}; renderLeft(); }
+  else if(e.key==='Delete'){ e.preventDefault(); e.stopPropagation(); delFile(p); }
+  else if(ctrl&&(e.key==='c'||e.key==='x')){ e.preventDefault(); e.stopPropagation(); S.clip={op:e.key==='c'?'copy':'cut',p}; toast(`${e.key==='c'?'Copiado':'Recortado'}: ${p} · Ctrl+V cola na pasta selecionada`); renderLeft(); }
+  else if(ctrl&&e.key==='v'){ e.preventDefault(); e.stopPropagation(); pasteIn(split(p)[0]); } }
+function grepAll(q){ const out=[], ql=q.toLowerCase(); Object.keys(F).forEach(p=>F[p].saved.split('\n').forEach((t,i)=>{ if(t.toLowerCase().includes(ql)) out.push({p,ln:i+1,t:t.trim()}); })); return out.slice(0,200); }
+function hitHl(t,q){ const i=t.toLowerCase().indexOf(q.toLowerCase()); return i<0?esc(t):esc(t.slice(0,i))+'<mark>'+esc(t.slice(i,i+q.length))+'</mark>'+esc(t.slice(i+q.length)); }
+/* comandos do editor: Ctrl+/ Alt+↑↓ Ctrl+G Ctrl+W Ctrl+Tab */
+function edLines(ta){ const v=ta.value, a=v.lastIndexOf('\n',ta.selectionStart-1)+1; let b=v.indexOf('\n',Math.max(ta.selectionEnd-(ta.selectionEnd>ta.selectionStart&&v[ta.selectionEnd-1]==='\n'?1:0),a)); if(b<0) b=v.length; return [a,b]; }
+function edPut(ta,a,b,text,selA,selB){ ta.focus(); ta.setSelectionRange(a,b); document.execCommand('insertText',false,text); ta.setSelectionRange(selA,selB); ta.oninput({}); }
+function edKey(e,ta){ const ctrl=e.ctrlKey||e.metaKey;
+  if(ctrl&&!e.shiftKey&&e.key==='/'){ e.preventDefault(); const [a,b]=edLines(ta); const pre=/\.(py|sh|ya?ml|toml)$/.test(S.file)?'#':'//'; const ls=ta.value.slice(a,b).split('\n');
+    const on=ls.filter(l=>l.trim()).every(l=>l.trimStart().startsWith(pre)); const ind=Math.min(...ls.filter(l=>l.trim()).map(l=>l.match(/^\s*/)[0].length));
+    const out=ls.map(l=>!l.trim()?l:on?l.replace(new RegExp('^(\\s*)'+pre.replace(/\//g,'\\/')+' ?'),'$1'):l.slice(0,ind)+pre+' '+l.slice(ind)).join('\n'); edPut(ta,a,b,out,a,a+out.length); return true; }
+  if(e.altKey&&!ctrl&&!e.shiftKey&&(e.key==='ArrowUp'||e.key==='ArrowDown')){ e.preventDefault(); const v=ta.value, [a,b]=edLines(ta), up=e.key==='ArrowUp';
+    if(up&&a===0||!up&&b>=v.length) return true; const blk=v.slice(a,b);
+    if(up){ const pa=v.lastIndexOf('\n',a-2)+1, prev=v.slice(pa,a-1); edPut(ta,pa,b,blk+'\n'+prev,pa,pa+blk.length); }
+    else { let nb=v.indexOf('\n',b+1); if(nb<0) nb=v.length; const next=v.slice(b+1,nb); edPut(ta,a,nb,next+'\n'+blk,a+next.length+1,a+next.length+1+blk.length); } return true; }
+  if(ctrl&&!e.shiftKey&&e.key==='g'){ e.preventDefault(); gotoDlg(ta); return true; }
+  if(ctrl&&!e.shiftKey&&e.key==='w'){ e.preventDefault(); closeFile(S.file); return true; }
+  if(ctrl&&e.key==='Tab'){ e.preventDefault(); const o=S.open||[]; const i=o.indexOf(S.file); if(o.length>1) openFile(o[(i+(e.shiftKey?-1:1)+o.length)%o.length]); return true; }
+  return false; }
+function gotoDlg(ta){ const n=ta.value.split('\n').length; const w=$('#edw'); if($('#gotoIn')) return;
+  w.insertAdjacentHTML('beforeend',`<div class="goto"><input id="gotoIn" placeholder="Ir para a linha (1–${n})" inputmode="numeric" aria-label="Ir para a linha"></div>`);
+  const i=$('#gotoIn'); i.focus(); const done=()=>{ const g=i.parentNode; if(g) g.remove(); };
+  i.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); const l=Math.max(1,Math.min(n,parseInt(i.value)||0)); done(); if(i.value.trim()){ S.gotoLn=l; renderRight(); } else ta.focus(); } else if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); done(); ta.focus(); } };
+  i.onblur=done; }
 function featBtn(x){ const s=ST[x.st], i=FEATS.indexOf(x), ws=x.kind==='ws';
   const sub=(x.repos?`<span class="sub" title="feature multi-repo: mesma branch em cada repo">${x.repos.map(r=>`<span>${r.name}${r.files?` · ${r.files}`:''}</span>`).join('')}</span>`:'')
     +(x.stack==='rebase'?`<span class="stk" data-stk="${x.id}" role="button" title="feat/healthcheck ganhou 2 commits depois que esta foi criada">base mudou · Rebase</span>`:x.stack==='merged'?`<span class="stk mv" data-stk="${x.id}" role="button" title="A mãe (!146) foi mergeada em main: rebase --onto main e o MR passa a apontar para main">mergeada · Mover p/ main</span>`:'');
@@ -952,6 +1010,17 @@ function bindLeft(el){
   el.querySelectorAll('[data-file]').forEach(b=>b.onclick=()=>openFile(b.dataset.file));
   el.querySelectorAll('[data-file]').forEach(b=>b.oncontextmenu=e=>{ e.preventDefault(); e.stopPropagation(); fileMenu(e,b.dataset.file); });
   const fl=el.querySelector('.flist'); if(fl&&S.ltab==='files') fl.oncontextmenu=e=>{ e.preventDefault(); fileMenu(e,null); };
+  const fq=$('#fq'); if(fq){ fq.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); S.fq=fq.value.trim(); S.fhits=S.fq?grepAll(S.fq):null; renderLeft(); $('#fq').focus(); } else if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); S.fq=''; S.fhits=null; renderLeft(); } }; if(S.fqFocus){ S.fqFocus=false; fq.focus(); } }
+  el.querySelectorAll('[data-hit]').forEach(b=>b.onclick=()=>{ S.gotoLn=+b.dataset.ln; openFile(b.dataset.hit); });
+  el.querySelectorAll('[data-file]').forEach(b=>{
+    b.onfocus=()=>{ S.fsel=b.dataset.file; };
+    b.ondragstart=e=>{ S.drag=b.dataset.file; e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',S.drag); };
+    b.ondragend=()=>{ S.drag=null; dropMark(null); }; });
+  if(fl&&S.ltab==='files'){
+    fl.ondragover=e=>{ if(!S.drag) return; e.preventDefault(); const r=e.target.closest('[data-file]'); dropMark(r?split(r.dataset.file)[0]:''); };
+    fl.ondragleave=e=>{ if(!fl.contains(e.relatedTarget)) dropMark(null); };
+    fl.ondrop=e=>{ e.preventDefault(); const r=e.target.closest('[data-file]'); const to=r?split(r.dataset.file)[0]:''; const p=S.drag; S.drag=null; dropMark(null); if(p) moveTo(p,to); };
+    fl.onkeydown=e=>treeKey(e); }
   const fn=$('#fName'); if(fn){ fn.focus(); const v=fn.value, i=v.lastIndexOf('/')+1, j=S.naming.kind==='rename'&&v.lastIndexOf('.')>i?v.lastIndexOf('.'):v.length; fn.setSelectionRange(i,j);
     fn.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); nameDone(fn.value.trim()); } else if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); S.naming=null; renderLeft(); } }; fn.onblur=()=>{ if(S.naming){ S.naming=null; renderLeft(); } }; }
   $('#newF').onclick=newFeatureDlg;
@@ -1211,7 +1280,7 @@ function renderRight(){
     ta.oninput=e=>{ F[S.file].text=ta.value; paint(); renderStatus(); if(e&&e.data==='.') openCompl(ta); else if(CMPL) closeCompl(); };
     ta.onscroll=()=>{ $('#hl').scrollTop=ta.scrollTop; $('#hl').scrollLeft=ta.scrollLeft; $('#gut').scrollTop=ta.scrollTop; paintBlame(); };
     ta.onkeyup=ta.onclick=e=>{ const pre=ta.value.slice(0,ta.selectionStart).split('\n'); S.ln=pre.length; S.col=pre[pre.length-1].length+1; renderStatus(); paintBlame(); if(e&&e.type==='click'&&(e.ctrlKey||e.metaKey)) goDef(ta,e); };
-    ta.onkeydown=e=>{ if(CMPL&&complKey(e,ta)) return; if(e.key==='Tab'){ e.preventDefault(); ta.setRangeText('  ',ta.selectionStart,ta.selectionEnd,'end'); ta.oninput(); } };
+    ta.onkeydown=e=>{ if(CMPL&&complKey(e,ta)) return; if(edKey(e,ta)){ e.stopPropagation(); return; } if(e.key==='Tab'){ e.preventDefault(); ta.setRangeText('  ',ta.selectionStart,ta.selectionEnd,'end'); ta.oninput(); } };
     ta.onmousemove=e=>hoverAt(ta,e); ta.onmouseleave=()=>{ const h=$('#hov'); if(h) h.remove(); };
     if(S.gotoLn){ const ls=ta.value.split('\n'); const pos=ls.slice(0,S.gotoLn-1).reduce((a,l)=>a+l.length+1,0); S.ln=S.gotoLn; S.col=1; S.gotoLn=null; setTimeout(()=>{ ta.focus(); ta.setSelectionRange(pos,pos); ta.scrollTop=Math.max(0,(S.ln-6)*20); paintBlame(); renderStatus(); }); }
     else setTimeout(paintBlame);
@@ -2321,7 +2390,7 @@ function openHelp(){
       <tr><td>10</td><td><b>▶ Rodar tarefa…</b> na barra do terminal → <span class="mono">build</span>: os erros caem em Problemas.</td></tr>
       <tr><td>11</td><td><kbd>Ctrl+Shift+K</kbd> no terminal: descreva o comando; ele é digitado, nunca executado.</td></tr>
       <tr><td>12</td><td><kbd>Alt+5</kbd> abre News. Respostas a threads suas chegam como toast (e notificação do sistema com a janela fora de foco).</td></tr></table></div>
-    <div><h4>Atalhos desta tela</h4><table>${HINTS[S.mode].concat([['Ctrl+P','abrir arquivo'],['Ctrl+Shift+P','comandos'],['Alt+1…6','Features · MRs · Bancos · Vault · News · Fila'],['Ctrl+Shift+←/→','terminal ↔ editor: na borda do último pane, o foco passa para o editor'],['Shift+Alt+←/→','selecionar por palavra no editor'],['Ctrl+Shift+K','comando por descrição']].filter(([k])=>!HINTS[S.mode].some(h=>h[0]===k))).map(([k,v])=>`<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`).join('')}</table>
+    <div><h4>Atalhos desta tela</h4><table>${HINTS[S.mode].concat([['Ctrl+P','abrir arquivo'],['Ctrl+Shift+P','comandos'],['Alt+1…6','Features · MRs · Bancos · Vault · News · Fila'],['Ctrl+Shift+←/→','terminal ↔ editor: na borda do último pane, o foco passa para o editor'],['Shift+Alt+←/→','selecionar por palavra no editor'],['Ctrl+Shift+K','comando por descrição'],['Ctrl+F · Ctrl+H','buscar · substituir no arquivo'],['Ctrl+/','comentar as linhas'],['Alt+↑/↓','mover a linha'],['Ctrl+G','ir para a linha'],['Ctrl+W · Ctrl+Tab','fechar · trocar a aba do editor'],['Árvore','↑/↓, Enter, F2, Delete, Ctrl+C/X/V; arraste para mover']].filter(([k])=>!HINTS[S.mode].some(h=>h[0]===k))).map(([k,v])=>`<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`).join('')}</table>
       <p style="margin-top:8px"><b>Regra dos atalhos:</b> com o foco no terminal, Ctrl+tecla vai para o terminal (Ctrl+A herdr, Ctrl+C, Ctrl+L, Ctrl+R, Ctrl+E de readline). Ctrl+Shift+tecla é do Maestro, como no seu Ghostty, e os binds de split do seu ghostty/config viram ações do herdr.</p>
       <p style="margin-top:6px">Visual: fonte, paleta, padding, opacidade e cursor vêm do ghostty/config; o prompt vem do starship.toml; <span class="mono">ls</span>/<span class="mono">cat</span> seguem seus aliases eza/bat. No navegador, os ícones Nerd Font só aparecem porque a JetBrainsMono Nerd Font está instalada na sua máquina. Alt+N aqui é o Ctrl+Shift+N do app (o navegador reserva esse).</p></div></div>
     <h4>Heurísticas de Nielsen aplicadas</h4><table>${N.map(([a,b],i)=>`<tr><td>${i+1}. ${a}</td><td>${b}</td></tr>`).join('')}</table>

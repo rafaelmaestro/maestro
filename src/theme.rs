@@ -49,15 +49,16 @@ impl Theme {
 impl Theme {
     /// O `.ed` do protótipo no editor do gpui-component, que pinta pelo tema global dele.
     pub fn apply_to_editor(&self, cx: &mut App) {
+        // carrega o tema escuro inteiro: a busca do editor (Ctrl+F) e os botões dela vinham claros
+        gpui_kit::component::Theme::change(gpui_kit::component::ThemeMode::Dark, None, cx);
         let th = gpui_kit::component::Theme::global_mut(cx);
-        // a moldura da janela (do Root) é cinza-claro em tema claro: fica escura como o Dracula
-        th.mode = gpui_kit::component::ThemeMode::Dark;
         th.foreground = self.fg;
         th.caret = self.fg;
         th.muted_foreground = self.comment;
         th.selection = rgba(0x44475ae6).into();
         // completar, hover e code actions do LSP: o `.cmpl`/`.hov` do protótipo
         th.popover = self.raise;
+        th.tokens.popover = self.raise.into();
         th.popover_foreground = self.fg;
         th.accent = self.accent_soft;
         th.accent_foreground = self.fg;

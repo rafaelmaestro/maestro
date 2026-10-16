@@ -288,6 +288,19 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] Teste no app num repo descartável
 - Desvio: no protótipo o Renomear já seleciona só o nome; no app o campo (`TextField`) não tem seleção, o cursor fica no fim e apaga com Backspace
 
+## Editor completo e simples (extensão: o protótipo não cobre)
+
+- [x] Protótipo: itens novos no menu da árvore, destaque ao arrastar, campo "Ir para linha", busca no projeto na aba Arquivos, atalhos na ajuda
+- [x] Busca no arquivo (Ctrl+F/Ctrl+H, já vem do componente) com o tema escuro; "Replace"/"Replace All" ficam em inglês (o componente não tem tradução pt)
+- [x] Árvore: Copiar, Recortar, Colar, Duplicar e Copiar caminho (menu e Ctrl+C/X/V com a árvore em foco); colar com nome livre (`x cópia.ts`); pasta não entra nela mesma + teste
+- [x] Árvore: arrastar e soltar move para a pasta (no vazio vai para a raiz); abas seguem
+- [x] Árvore: teclado (↑/↓, →/←, Enter, F2, Delete)
+- [ ] Editor: Ctrl+/ comenta, Alt+↑/↓ move linha, Ctrl+G vai para a linha, Ctrl+W fecha a aba, Ctrl+Tab troca de aba (Ctrl+Z desfaz cada um)
+- [ ] Busca no projeto: campo no topo da aba Arquivos (`git grep`), clique abre na linha
+- [ ] Ajuda (?) e paleta com os atalhos novos
+- [ ] Teste no app num repo descartável
+- Fora desta rodada: formatar, renomear símbolo (LSP), dobrar código, dividir o editor
+
 ## Backlog (não entra sem decisão)
 
 - Conflitos entre features (ripwire branch conflicts)

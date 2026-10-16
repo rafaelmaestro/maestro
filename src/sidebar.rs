@@ -42,6 +42,7 @@ pub enum SidebarEvent {
     Stack(PathBuf, Stack),
     /// botão direito na aba Arquivos; o shell mexe no disco e nas abas do editor
     Fs(FsOp),
+    Toast(String),
 }
 
 #[derive(Clone, Debug)]
@@ -50,6 +51,64 @@ pub enum FsOp {
     Create(String, bool),
     Rename(String, String),
     Delete(String, bool),
+    /// (origem, pasta de destino; "" é a raiz)
+    Copy(String, String),
+}
+
+/// Um item arrastado na árvore: o caminho dele.
+#[derive(Clone)]
+pub struct DragPath(String);
+
+struct DragChip(String, Theme);
+
+impl Render for DragChip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let t = &self.1;
+        div()
+            .px(px(8.))
+            .py(px(2.))
+            .bg(t.raise)
+            .border_1()
+            .border_color(t.accent)
+            .rounded(px(4.))
+            .font_family(t.mono.clone())
+            .text_size(px(13.))
+            .text_color(t.fg)
+            .child(self.0.clone())
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Act {
+    NewFile,
+    NewDir,
+    Cut,
+    Copy,
+    Paste,
+    Duplicate,
+    CopyPath,
+    Rename,
+    Delete,
+}
+
+impl Act {
+    fn label(self) -> (&'static str, &'static str) {
+        match self {
+            Act::NewFile => ("Novo arquivo", ""),
+            Act::NewDir => ("Nova pasta", ""),
+            Act::Cut => ("Recortar", "Ctrl+X"),
+            Act::Copy => ("Copiar", "Ctrl+C"),
+            Act::Paste => ("Colar", "Ctrl+V"),
+            Act::Duplicate => ("Duplicar", ""),
+            Act::CopyPath => ("Copiar caminho", ""),
+            Act::Rename => ("Renomear", "F2"),
+            Act::Delete => ("Excluir", "Delete"),
+        }
+    }
+}
+
+fn parent(p: &str) -> &str {
+    p.rsplit_once('/').map_or("", |(d, _)| d)
 }
 
 /// O nome sendo digitado na árvore: novo item dentro da pasta (é pasta) ou o item renomeado.
@@ -100,6 +159,11 @@ pub struct Sidebar {
     /// aba Arquivos: o menu do botão direito (item, é pasta, onde); item vazio é a raiz
     menu: Option<(String, bool, Point<Pixels>)>,
     menu_focus: FocusHandle,
+    tree_focus: FocusHandle,
+    /// item selecionado na árvore (caminho, é pasta): teclado e colar
+    sel: Option<(String, bool)>,
+    /// (caminho, recortado) de Ctrl+C/Ctrl+X na árvore
+    clip: Option<(String, bool)>,
     naming: Option<(Naming, Entity<TextField>)>,
     /// por worktree principal: os outros repos da feature (nome, worktree, arquivos mudados)
     extra: HashMap<PathBuf, Vec<(String, PathBuf, usize)>>,
@@ -411,6 +475,9 @@ impl Sidebar {
             expanded: HashSet::new(),
             menu: None,
             menu_focus: cx.focus_handle(),
+            tree_focus: cx.focus_handle(),
+            sel: None,
+            clip: None,
             naming: None,
             extra: HashMap::new(),
             stacks: HashMap::new(),
@@ -761,30 +828,140 @@ impl Sidebar {
             }
         }
         self.show_files(cx);
+        if let (Some(p), Some(files)) = (reveal, &self.files) {
+            let inner = format!("{p}/");
+            self.sel = Some((p.into(), files.iter().any(|f| f.starts_with(&inner))));
+        }
+    }
+
+    /// Soltou (ou colou recortado) `from` dentro da pasta `dir`: o shell move e leva as abas.
+    fn move_into(&mut self, from: &str, dir: &str, cx: &mut Context<Self>) {
+        if parent(from) == dir || from == dir {
+            return;
+        }
+        let name = from.rsplit('/').next().unwrap_or(from);
+        let to = if dir.is_empty() {
+            name.to_string()
+        } else {
+            format!("{dir}/{name}")
+        };
+        cx.emit(SidebarEvent::Fs(FsOp::Rename(from.into(), to)));
+    }
+
+    fn paste(&mut self, dir: &str, cx: &mut Context<Self>) {
+        match self.clip.clone() {
+            Some((from, true)) => {
+                self.clip = None;
+                self.move_into(&from, dir, cx);
+            }
+            Some((from, false)) => cx.emit(SidebarEvent::Fs(FsOp::Copy(from, dir.into()))),
+            None => cx.emit(SidebarEvent::Toast(
+                "Nada para colar: Ctrl+C ou Ctrl+X num item".into(),
+            )),
+        }
+    }
+
+    /// Teclado da árvore em foco: setas, Enter, F2, Delete, Ctrl+C/X/V.
+    fn tree_key(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.naming.is_some() || self.menu.is_some() {
+            return;
+        }
+        let Some(files) = &self.files else { return };
+        let k = &e.keystroke;
+        let m = &k.modifiers;
+        let rows = changes::tree(files, &self.expanded);
+        let at = |p: &str| rows.iter().position(|r| r.2 == p);
+        let i = self.sel.as_ref().and_then(|(p, _)| at(p));
+        let pick = |j: usize| rows.get(j).map(|r| (r.2.clone(), r.3));
+        let sel = self.sel.clone();
+        match (k.key.as_str(), m.control, m.shift || m.alt) {
+            ("down", false, false) => {
+                self.sel = pick(i.map_or(0, |i| (i + 1).min(rows.len().saturating_sub(1))))
+            }
+            ("up", false, false) => self.sel = pick(i.map_or(0, |i| i.saturating_sub(1))),
+            ("right", false, false) => match sel {
+                Some((p, true)) if !self.expanded.contains(&p) => {
+                    self.expanded.insert(p);
+                }
+                Some((_, true)) => self.sel = i.and_then(|i| pick(i + 1)),
+                _ => {}
+            },
+            ("left", false, false) => match sel {
+                Some((p, true)) if self.expanded.contains(&p) => {
+                    self.expanded.remove(&p);
+                }
+                Some((p, _)) if !parent(&p).is_empty() => {
+                    self.sel = Some((parent(&p).into(), true))
+                }
+                _ => {}
+            },
+            ("enter", false, false) => match sel {
+                Some((p, true)) => {
+                    if !self.expanded.remove(&p) {
+                        self.expanded.insert(p);
+                    }
+                }
+                Some((p, false)) => cx.emit(SidebarEvent::OpenFile(p)),
+                None => return,
+            },
+            ("f2", false, false) => match sel {
+                Some((p, _)) => self.start_naming(Naming::Rename(p), window, cx),
+                None => return,
+            },
+            ("delete", false, false) => match sel {
+                Some((p, dir)) => cx.emit(SidebarEvent::Fs(FsOp::Delete(p, dir))),
+                None => return,
+            },
+            ("c" | "x", true, false) => match sel {
+                Some((p, _)) => {
+                    let cut = k.key == "x";
+                    cx.emit(SidebarEvent::Toast(format!(
+                        "{} {p} · Ctrl+V cola na pasta selecionada",
+                        if cut { "Recortado" } else { "Copiado" }
+                    )));
+                    self.clip = Some((p, cut));
+                }
+                None => return,
+            },
+            ("v", true, false) => {
+                let dir = match &sel {
+                    Some((p, true)) => p.clone(),
+                    Some((p, false)) => parent(p).into(),
+                    None => String::new(),
+                };
+                self.paste(&dir, cx);
+            }
+            _ => return,
+        }
+        cx.stop_propagation();
+        cx.notify();
     }
 
     fn menu_pick(
         &mut self,
-        i: usize,
+        a: Act,
         p: &str,
         dir: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.menu = None;
-        let parent = if dir {
-            p.to_string()
-        } else {
-            p.rsplit_once('/').map_or(String::new(), |(d, _)| d.into())
-        };
-        match i {
-            0 | 1 => self.start_naming(Naming::New(parent, i == 1), window, cx),
-            2 => self.start_naming(Naming::Rename(p.into()), window, cx),
-            _ => {
-                cx.emit(SidebarEvent::Fs(FsOp::Delete(p.into(), dir)));
-                cx.notify();
+        let here = if dir { p } else { parent(p) }.to_string();
+        match a {
+            Act::NewFile | Act::NewDir => {
+                self.start_naming(Naming::New(here, a == Act::NewDir), window, cx)
             }
+            Act::Cut | Act::Copy => self.clip = Some((p.into(), a == Act::Cut)),
+            Act::Paste => self.paste(&here, cx),
+            Act::Duplicate => cx.emit(SidebarEvent::Fs(FsOp::Copy(p.into(), parent(p).into()))),
+            Act::CopyPath => {
+                cx.write_to_clipboard(ClipboardItem::new_string(p.into()));
+                cx.emit(SidebarEvent::Toast(format!("Copiado: {p}")));
+            }
+            Act::Rename => self.start_naming(Naming::Rename(p.into()), window, cx),
+            Act::Delete => cx.emit(SidebarEvent::Fs(FsOp::Delete(p.into(), dir))),
         }
+        cx.notify();
     }
 
     fn start_naming(&mut self, n: Naming, window: &mut Window, cx: &mut Context<Self>) {
@@ -1281,8 +1458,25 @@ impl Sidebar {
 
     fn file_menu(&self, p: &str, dir: bool, at: Point<Pixels>, cx: &mut Context<Self>) -> Deferred {
         let t = &self.theme;
-        let labels = ["Novo arquivo", "Nova pasta", "Renomear", "Excluir"];
-        let n = if p.is_empty() { 2 } else { 4 };
+        use Act::*;
+        let acts: &[Option<Act>] = if p.is_empty() {
+            &[Some(NewFile), Some(NewDir), None, Some(Paste)]
+        } else {
+            &[
+                Some(NewFile),
+                Some(NewDir),
+                None,
+                Some(Cut),
+                Some(Copy),
+                Some(Paste),
+                Some(Duplicate),
+                None,
+                Some(CopyPath),
+                None,
+                Some(Rename),
+                Some(Delete),
+            ]
+        };
         let mut m = div()
             .id("fl-menu")
             .track_focus(&self.menu_focus)
@@ -1309,24 +1503,34 @@ impl Sidebar {
                 this.menu = None;
                 cx.notify();
             }));
-        for (i, label) in labels.into_iter().enumerate().take(n) {
-            if i == 2 {
+        for (i, a) in acts.iter().enumerate() {
+            let Some(a) = *a else {
                 m = m.child(div().my(px(4.)).h(px(1.)).bg(t.line));
-            }
+                continue;
+            };
+            let (label, key) = a.label();
+            let off = a == Paste && self.clip.is_none();
             let p = p.to_string();
             m = m.child(
                 div()
                     .id(("flm", i))
+                    .flex()
+                    .justify_between()
+                    .gap(px(18.))
                     .px(px(10.))
                     .py(px(4.))
                     .rounded(px(4.))
-                    .cursor_pointer()
-                    .hover(|d| d.bg(t.accent_soft))
-                    .when(i == 3, |d| d.text_color(rgb(0xff5555)))
+                    .when(off, |d| d.opacity(0.45))
+                    .when(!off, |d| {
+                        d.cursor_pointer()
+                            .hover(|d| d.bg(t.accent_soft))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.menu_pick(a, &p, dir, window, cx)
+                            }))
+                    })
+                    .when(a == Delete, |d| d.text_color(rgb(0xff5555)))
                     .child(label)
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.menu_pick(i, &p, dir, window, cx)
-                    })),
+                    .child(div().text_color(t.comment).child(key)),
             );
         }
         deferred(anchored().position(at).child(m))
@@ -1420,11 +1624,36 @@ impl Sidebar {
                         _ => " ",
                     };
                     let path = p.clone();
+                    let here = if dir {
+                        p.clone()
+                    } else {
+                        parent(&p).to_string()
+                    };
+                    let selected = self.sel.as_ref().is_some_and(|s| s.0 == p);
+                    let cut = self.clip.as_ref().is_some_and(|c| c.1 && c.0 == p);
+                    let (drag, soft, theme) = (DragPath(p.clone()), t.accent_soft, t.clone());
                     list = list.child(
                         div()
                             .id(SharedString::from(format!("fl:{p}")))
                             .cursor_pointer()
                             .hover(|d| d.bg(t.raise))
+                            .border_l_2()
+                            .border_color(if selected {
+                                t.accent
+                            } else {
+                                gpui_kit::transparent_black()
+                            })
+                            .when(cut, |d| d.opacity(0.5))
+                            .on_drag(drag, move |d: &DragPath, _, _, cx| {
+                                let name = d.0.rsplit('/').next().unwrap_or(&d.0).to_string();
+                                let theme = theme.clone();
+                                cx.new(|_| DragChip(name, theme))
+                            })
+                            .drag_over::<DragPath>(move |s, _, _, _| s.bg(soft))
+                            .on_drop(cx.listener(move |this, d: &DragPath, _, cx| {
+                                cx.stop_propagation();
+                                this.move_into(&d.0, &here, cx);
+                            }))
                             .flex()
                             .gap(px(6.))
                             .items_center()
@@ -1463,15 +1692,17 @@ impl Sidebar {
                                     cx.notify();
                                 }),
                             )
-                            .on_click(cx.listener(move |this, _, _, cx| {
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.sel = Some((path.clone(), dir));
                                 if dir {
+                                    window.focus(&this.tree_focus, cx);
                                     if !this.expanded.remove(&path) {
                                         this.expanded.insert(path.clone());
                                     }
-                                    cx.notify();
                                 } else {
                                     cx.emit(SidebarEvent::OpenFile(path.clone()))
                                 }
+                                cx.notify();
                             })),
                     );
                     if let Some(f) = &new_here {
@@ -1479,14 +1710,21 @@ impl Sidebar {
                     }
                 }
                 // a lista estica até o fim da lateral: botão direito no vazio cria na raiz
-                list = list.flex_grow(1.).on_mouse_down(
-                    MouseButton::Right,
-                    cx.listener(|this, e: &MouseDownEvent, window, cx| {
-                        this.menu = Some((String::new(), true, e.position));
-                        window.focus(&this.menu_focus, cx);
-                        cx.notify();
-                    }),
-                );
+                let raise = t.raise;
+                list = list
+                    .track_focus(&self.tree_focus)
+                    .on_key_down(cx.listener(Self::tree_key))
+                    .drag_over::<DragPath>(move |s, _, _, _| s.bg(raise))
+                    .on_drop(cx.listener(|this, d: &DragPath, _, cx| this.move_into(&d.0, "", cx)))
+                    .flex_grow(1.)
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(|this, e: &MouseDownEvent, window, cx| {
+                            this.menu = Some((String::new(), true, e.position));
+                            window.focus(&this.menu_focus, cx);
+                            cx.notify();
+                        }),
+                    );
                 if let Some((p, dir, at)) = &self.menu {
                     list = list.child(self.file_menu(p, *dir, *at, cx));
                 }

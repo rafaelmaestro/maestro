@@ -342,6 +342,7 @@ impl Shell {
                     SidebarEvent::OpenReviewAt(p) => this.want_review_at = Some(p.clone()),
                     SidebarEvent::Stack(wt, st) => this.want_stack = Some((wt.clone(), *st)),
                     SidebarEvent::Fs(op) => this.want_fs = Some(op.clone()),
+                    SidebarEvent::Toast(m) => this.toast(m.clone(), cx),
                 }
                 cx.notify();
             })
@@ -970,6 +971,13 @@ impl Shell {
                     if !dir {
                         self.run(Cmd::OpenFile(rel), window, cx);
                     }
+                }
+                Err(e) => self.toast(e, cx),
+            },
+            FsOp::Copy(from, dir) => match changes::copy(&root, &from, &dir) {
+                Ok(rel) => {
+                    sidebar.update(cx, |s, cx| s.reload_files(Some(&rel), cx));
+                    self.toast(format!("Colado: {rel}"), cx);
                 }
                 Err(e) => self.toast(e, cx),
             },
