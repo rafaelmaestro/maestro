@@ -26,6 +26,8 @@ pub enum SidebarEvent {
     OpenReview(String),
     /// clique em "Arquivos": abre o arquivo no editor
     OpenFile(String),
+    /// resultado da busca no projeto: (arquivo, linha 0-based)
+    OpenFileAt(String, u32),
     /// o MR da feature desta worktree acabou de mergear: (worktree, iid, branch)
     Merged(PathBuf, u64, String),
     /// um agente passou a pedir permissão ou terminou (o `notify(f)` do protótipo)
@@ -164,6 +166,11 @@ pub struct Sidebar {
     sel: Option<(String, bool)>,
     /// (caminho, recortado) de Ctrl+C/Ctrl+X na árvore
     clip: Option<(String, bool)>,
+    /// busca no projeto no topo da aba Arquivos e o que ela achou (None = mostra a árvore)
+    query: Option<Entity<TextField>>,
+    hits: Option<Vec<changes::Hit>>,
+    focus_query: bool,
+    _grep: Task<()>,
     naming: Option<(Naming, Entity<TextField>)>,
     /// por worktree principal: os outros repos da feature (nome, worktree, arquivos mudados)
     extra: HashMap<PathBuf, Vec<(String, PathBuf, usize)>>,
@@ -478,6 +485,10 @@ impl Sidebar {
             tree_focus: cx.focus_handle(),
             sel: None,
             clip: None,
+            query: None,
+            hits: None,
+            focus_query: false,
+            _grep: Task::ready(()),
             naming: None,
             extra: HashMap::new(),
             stacks: HashMap::new(),
@@ -815,7 +826,46 @@ impl Sidebar {
                 .map(|r| changes::files(&r))
                 .unwrap_or_default(),
         );
+        if self.query.is_none() {
+            let t = self.theme.clone();
+            let f = cx.new(|cx| TextField::new(t, "", "buscar no projeto", false, true, cx));
+            cx.subscribe(&f, |this, f, e: &FieldEvent, cx| match e {
+                FieldEvent::Submit => this.search(f.read(cx).value.trim().to_string(), cx),
+                FieldEvent::Cancel => {
+                    f.update(cx, |f, cx| f.set(String::new(), cx));
+                    this.hits = None;
+                    cx.notify();
+                }
+                FieldEvent::Changed => {}
+            })
+            .detach();
+            self.query = Some(f);
+        }
         cx.notify();
+    }
+
+    /// A paleta devolve o foco ao terminal quando fecha: o campo pega o foco no próximo render.
+    pub fn focus_search(&mut self, cx: &mut Context<Self>) {
+        self.focus_query = true;
+        cx.notify();
+    }
+
+    fn search(&mut self, q: String, cx: &mut Context<Self>) {
+        let Some(root) = self.top_worktree().filter(|_| !q.is_empty()) else {
+            self.hits = None;
+            return cx.notify();
+        };
+        self._grep = cx.spawn(async move |this, cx| {
+            let hits = cx
+                .background_executor()
+                .spawn(async move { changes::grep(&root, &q) })
+                .await;
+            this.update(cx, |this, cx| {
+                this.hits = Some(hits);
+                cx.notify();
+            })
+            .ok();
+        });
     }
 
     /// Relê a aba Arquivos depois de mexer no disco, com as pastas de `reveal` abertas.
@@ -863,7 +913,12 @@ impl Sidebar {
 
     /// Teclado da árvore em foco: setas, Enter, F2, Delete, Ctrl+C/X/V.
     fn tree_key(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.naming.is_some() || self.menu.is_some() {
+        // o campo de busca fica dentro da lista: Delete e Ctrl+V digitados nele não mexem na árvore
+        let typing = self
+            .query
+            .as_ref()
+            .is_some_and(|q| q.read(cx).focus_handle().is_focused(window));
+        if typing || self.naming.is_some() || self.menu.is_some() || self.hits.is_some() {
             return;
         }
         let Some(files) = &self.files else { return };
@@ -1588,7 +1643,49 @@ impl Sidebar {
                 })
         };
         match (&self.files, &self.changes) {
+            (Some(_), _) if self.hits.is_some() => {
+                if let Some(q) = &self.query {
+                    list = list.child(div().px(px(8.)).pt(px(2.)).pb(px(6.)).child(q.clone()));
+                }
+                let hits = self.hits.as_deref().unwrap_or_default();
+                for (i, (p, ln, text)) in hits.iter().enumerate() {
+                    let (p2, line) = (p.clone(), ln.saturating_sub(1));
+                    list = list.child(
+                        div()
+                            .id(("hit", i))
+                            .cursor_pointer()
+                            .hover(|d| d.bg(t.raise))
+                            .px(px(12.))
+                            .py(px(2.))
+                            .font_family(t.mono.clone())
+                            .text_size(px(13.))
+                            .child(
+                                div()
+                                    .truncate()
+                                    .text_color(t.muted)
+                                    .child(format!("{p}:{ln}")),
+                            )
+                            .child(div().truncate().pl(px(8.)).child(text.clone()))
+                            .on_click(cx.listener(move |_, _, _, cx| {
+                                cx.emit(SidebarEvent::OpenFileAt(p2.clone(), line))
+                            })),
+                    );
+                }
+                let n = hits.len();
+                list = list.child(none(
+                    t,
+                    match n {
+                        0 => "Nada encontrado. Esc volta à árvore.".into(),
+                        200 => "200 resultados (o máximo) · Esc volta à árvore".into(),
+                        1 => "1 resultado · Esc volta à árvore".into(),
+                        n => format!("{n} resultados · Esc volta à árvore"),
+                    },
+                ));
+            }
             (Some(files), _) => {
+                if let Some(q) = &self.query {
+                    list = list.child(div().px(px(8.)).pt(px(2.)).pb(px(6.)).child(q.clone()));
+                }
                 let field = |depth: usize, f: &Entity<TextField>| {
                     div()
                         .pl(px(8. + depth as f32 * 14.))
@@ -1800,16 +1897,8 @@ impl Sidebar {
                         )),
                     )
                     .child(
-                        tab("lt-files", "Arquivos".into(), on_files).on_click(cx.listener(
-                            |this, _, _, cx| {
-                                this.files = Some(
-                                    this.top_worktree()
-                                        .map(|r| changes::files(&r))
-                                        .unwrap_or_default(),
-                                );
-                                cx.notify();
-                            },
-                        )),
+                        tab("lt-files", "Arquivos".into(), on_files)
+                            .on_click(cx.listener(|this, _, _, cx| this.show_files(cx))),
                     ),
             )
             .child(list)
@@ -1992,7 +2081,12 @@ fn feats() -> Div {
 }
 
 impl Render for Sidebar {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if std::mem::take(&mut self.focus_query)
+            && let Some(q) = &self.query
+        {
+            window.focus(&q.read(cx).focus_handle(), cx);
+        }
         let t = self.theme.clone();
         let this = cx.entity();
         let (repos, loose) = self.repos_in(true);

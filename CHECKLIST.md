@@ -296,9 +296,9 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] Árvore: arrastar e soltar move para a pasta (no vazio vai para a raiz); abas seguem
 - [x] Árvore: teclado (↑/↓, →/←, Enter, F2, Delete)
 - [x] Editor: Ctrl+/ comenta, Alt+↑/↓ move linha, Ctrl+G vai para a linha, Ctrl+W fecha a aba, Ctrl+Tab troca de aba (Ctrl+Z desfaz cada um)
-- [ ] Busca no projeto: campo no topo da aba Arquivos (`git grep`), clique abre na linha
-- [ ] Ajuda (?) e paleta com os atalhos novos
-- [ ] Teste no app num repo descartável
+- [x] Busca no projeto: campo no topo da aba Arquivos (`git grep`), clique abre na linha
+- [x] Ajuda (?) e paleta com os atalhos novos
+- [x] Teste no app num repo descartável
 - Fora desta rodada: formatar, renomear símbolo (LSP), dobrar código, dividir o editor
 
 ## Backlog (não entra sem decisão)

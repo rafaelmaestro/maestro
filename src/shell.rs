@@ -55,6 +55,7 @@ pub struct Shell {
     want_review: Option<Option<String>>,
     want_file: Option<String>,
     want_fs: Option<FsOp>,
+    want_file_at: Option<(String, u32)>,
     want_merged: Option<(std::path::PathBuf, u64, String)>,
     /// "⎇ repo · N" da lateral: a revisão daquela worktree
     want_review_at: Option<std::path::PathBuf>,
@@ -324,6 +325,7 @@ impl Shell {
                     SidebarEvent::NewFeature => this.want_dialog = true,
                     SidebarEvent::OpenReview(p) => this.want_review = Some(Some(p.clone())),
                     SidebarEvent::OpenFile(p) => this.want_file = Some(p.clone()),
+                    SidebarEvent::OpenFileAt(p, l) => this.want_file_at = Some((p.clone(), *l)),
                     SidebarEvent::Merged(wt, iid, branch) => {
                         this.want_merged = Some((wt.clone(), *iid, branch.clone()))
                     }
@@ -414,6 +416,7 @@ impl Shell {
             want_review: None,
             want_file: None,
             want_fs: None,
+            want_file_at: None,
             want_merged: None,
             want_review_at: None,
             want_stack: None,
@@ -1945,6 +1948,12 @@ impl Shell {
                     window.focus(&self.terminal.read(cx).focus_handle(), cx);
                 }
             }
+            Cmd::SearchProject => {
+                self.run(Cmd::Files, window, cx);
+                if let Some(s) = &self.sidebar {
+                    s.update(cx, |s, cx| s.focus_search(cx));
+                }
+            }
             Cmd::RepoMenu => {
                 let top = self.sidebar.as_ref().and_then(|s| s.read(cx).top_repo());
                 let mut repos: Vec<std::path::PathBuf> =
@@ -2978,6 +2987,16 @@ impl Shell {
             [
                 ("Ctrl+Shift+O", "abrir arquivo", true),
                 ("Ctrl+Shift+F", "árvore de arquivos", true),
+                ("Ctrl+F · Ctrl+H", "buscar · substituir no arquivo", true),
+                ("Ctrl+/", "comentar as linhas", true),
+                ("Alt+↑/↓", "mover a linha", true),
+                ("Ctrl+G", "ir para a linha", true),
+                ("Ctrl+W · Ctrl+Tab", "fechar · trocar a aba do editor", true),
+                (
+                    "Árvore",
+                    "↑/↓, Enter, F2, Delete, Ctrl+C/X/V; arraste para mover",
+                    true,
+                ),
                 ("Alt+1…6", "Features, MRs, Bancos, Vault, News, Fila", true),
                 ("Ctrl+Shift+P", "comandos", true),
                 ("Ctrl+Shift+K", "comando por descrição", true),
@@ -3412,6 +3431,12 @@ impl Render for Shell {
         }
         if let Some(p) = self.want_file.take() {
             self.run(Cmd::OpenFile(p), window, cx);
+        }
+        if let Some((p, line)) = self.want_file_at.take() {
+            self.run(Cmd::OpenFile(p), window, cx);
+            if let Some(r) = &self.review {
+                r.update(cx, |r, cx| r.goto_line(line, window, cx));
+            }
         }
         if let Some(op) = self.want_fs.take() {
             self.file_op(op, window, cx);

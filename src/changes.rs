@@ -45,6 +45,47 @@ pub fn files(root: &Path) -> Vec<String> {
     .unwrap_or_default()
 }
 
+/// Um resultado da busca no projeto: (caminho, linha 1-based, texto da linha).
+pub type Hit = (String, u32, String);
+
+/// Busca no projeto pelo texto literal, sem caixa, nos arquivos que a aba Arquivos mostra.
+pub fn grep(root: &Path, q: &str) -> Vec<Hit> {
+    // ponytail: 200 resultados; paginar se alguém precisar de mais
+    git(
+        root,
+        &[
+            "grep",
+            "-n",
+            "-z",
+            "-I",
+            "-F",
+            "-i",
+            "--untracked",
+            "--no-color",
+            "-e",
+            q,
+            "--",
+        ],
+    )
+    .map(|o| parse_grep(&o))
+    .unwrap_or_default()
+}
+
+/// `caminho\0linha\0texto` por linha (`-z`: caminho com `:` não quebra).
+fn parse_grep(out: &str) -> Vec<Hit> {
+    out.lines()
+        .filter_map(|l| {
+            let mut it = l.splitn(3, '\0');
+            Some((
+                it.next()?.into(),
+                it.next()?.parse().ok()?,
+                it.next()?.trim().chars().take(200).collect(),
+            ))
+        })
+        .take(200)
+        .collect()
+}
+
 /// Caminho digitado na árvore: relativo, sem `..` nem `.`, para não sair da worktree.
 fn inside(rel: &str) -> Result<&str, String> {
     let rel = rel.trim().trim_end_matches('/');
@@ -330,6 +371,12 @@ mod tests {
         assert!(link.file_type().is_symlink());
         assert!(copy(&root, "sumiu.ts", "vazia").is_err());
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn le_o_git_grep() {
+        let h = parse_grep("src/a:b.ts\x0012\x00  let x = 1\nlixo\n");
+        assert_eq!(h, vec![("src/a:b.ts".into(), 12, "let x = 1".into())]);
     }
 
     #[test]

@@ -571,6 +571,12 @@ impl Review {
         }
     }
 
+    pub fn goto_line(&mut self, line: u32, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(e) = self.editor().cloned() {
+            e.update(cx, |e, cx| e.goto(line, window, cx));
+        }
+    }
+
     /// A aba Histórico do arquivo da frente (`git log --follow`).
     pub fn open_history(&mut self, cx: &mut Context<Self>) {
         let Some(path) = self.editor().map(|e| e.read(cx).path.clone()) else {
