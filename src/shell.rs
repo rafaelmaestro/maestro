@@ -953,6 +953,7 @@ impl Shell {
     }
 
     /// Botão direito na aba Arquivos: mexe no disco e leva as abas do editor junto.
+    // ponytail: copiar e excluir rodam na thread da UI; uma pasta enorme trava a janela, mandar para o background_executor se pesar
     fn file_op(&mut self, op: FsOp, window: &mut Window, cx: &mut Context<Self>) {
         let Some(sidebar) = self.sidebar.clone() else {
             return;
@@ -2991,6 +2992,8 @@ impl Shell {
                 ("Ctrl+/", "comentar as linhas", true),
                 ("Alt+↑/↓", "mover a linha", true),
                 ("Ctrl+G", "ir para a linha", true),
+                ("Ctrl+] · Ctrl+[", "recuar · desrecuar", true),
+                ("F12 · Ctrl+.", "definição · ações do LSP", true),
                 ("Ctrl+W · Ctrl+Tab", "fechar · trocar a aba do editor", true),
                 (
                     "Árvore",

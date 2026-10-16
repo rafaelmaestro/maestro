@@ -168,7 +168,8 @@ pub struct Sidebar {
     clip: Option<(String, bool)>,
     /// busca no projeto no topo da aba Arquivos e o que ela achou (None = mostra a árvore)
     query: Option<Entity<TextField>>,
-    hits: Option<Vec<changes::Hit>>,
+    /// (worktree da busca, resultados): trocar de worktree esconde os da outra
+    hits: Option<(PathBuf, String, Vec<changes::Hit>)>,
     focus_query: bool,
     _grep: Task<()>,
     naming: Option<(Naming, Entity<TextField>)>,
@@ -845,6 +846,12 @@ impl Sidebar {
     }
 
     /// A paleta devolve o foco ao terminal quando fecha: o campo pega o foco no próximo render.
+    fn searching(&self) -> bool {
+        self.hits
+            .as_ref()
+            .is_some_and(|h| Some(&h.0) == self.top_worktree().as_ref())
+    }
+
     pub fn focus_search(&mut self, cx: &mut Context<Self>) {
         self.focus_query = true;
         cx.notify();
@@ -856,12 +863,13 @@ impl Sidebar {
             return cx.notify();
         };
         self._grep = cx.spawn(async move |this, cx| {
+            let (r, q2) = (root.clone(), q.clone());
             let hits = cx
                 .background_executor()
-                .spawn(async move { changes::grep(&root, &q) })
+                .spawn(async move { changes::grep(&r, &q2) })
                 .await;
             this.update(cx, |this, cx| {
-                this.hits = Some(hits);
+                this.hits = Some((root, q, hits));
                 cx.notify();
             })
             .ok();
@@ -918,7 +926,7 @@ impl Sidebar {
             .query
             .as_ref()
             .is_some_and(|q| q.read(cx).focus_handle().is_focused(window));
-        if typing || self.naming.is_some() || self.menu.is_some() || self.hits.is_some() {
+        if typing || self.naming.is_some() || self.menu.is_some() || self.searching() {
             return;
         }
         let Some(files) = &self.files else { return };
@@ -1643,33 +1651,48 @@ impl Sidebar {
                 })
         };
         match (&self.files, &self.changes) {
-            (Some(_), _) if self.hits.is_some() => {
+            (Some(_), _) if self.searching() => {
                 if let Some(q) = &self.query {
                     list = list.child(div().px(px(8.)).pt(px(2.)).pb(px(6.)).child(q.clone()));
                 }
-                let hits = self.hits.as_deref().unwrap_or_default();
+                let (q, hits) = self
+                    .hits
+                    .as_ref()
+                    .map_or(("", &[][..]), |h| (h.1.as_str(), h.2.as_slice()));
+                let mark = HighlightStyle {
+                    background_color: Some(Hsla {
+                        a: 0.25,
+                        ..rgb(0xf1fa8c).into()
+                    }),
+                    ..Default::default()
+                };
                 for (i, (p, ln, text)) in hits.iter().enumerate() {
                     let (p2, line) = (p.clone(), ln.saturating_sub(1));
-                    list = list.child(
-                        div()
-                            .id(("hit", i))
-                            .cursor_pointer()
-                            .hover(|d| d.bg(t.raise))
-                            .px(px(12.))
-                            .py(px(2.))
-                            .font_family(t.mono.clone())
-                            .text_size(px(13.))
-                            .child(
-                                div()
-                                    .truncate()
-                                    .text_color(t.muted)
-                                    .child(format!("{p}:{ln}")),
-                            )
-                            .child(div().truncate().pl(px(8.)).child(text.clone()))
-                            .on_click(cx.listener(move |_, _, _, cx| {
-                                cx.emit(SidebarEvent::OpenFileAt(p2.clone(), line))
-                            })),
-                    );
+                    list =
+                        list.child(
+                            div()
+                                .id(("hit", i))
+                                .cursor_pointer()
+                                .hover(|d| d.bg(t.raise))
+                                .px(px(12.))
+                                .py(px(2.))
+                                .font_family(t.mono.clone())
+                                .text_size(px(13.))
+                                .child(
+                                    div()
+                                        .truncate()
+                                        .text_color(t.muted)
+                                        .child(format!("{p}:{ln}")),
+                                )
+                                .child(div().truncate().pl(px(8.)).child(
+                                    StyledText::new(text.clone()).with_highlights(
+                                        changes::find_ci(text, q).map(|r| (r, mark)),
+                                    ),
+                                ))
+                                .on_click(cx.listener(move |_, _, _, cx| {
+                                    cx.emit(SidebarEvent::OpenFileAt(p2.clone(), line))
+                                })),
+                        );
                 }
                 let n = hits.len();
                 list = list.child(none(

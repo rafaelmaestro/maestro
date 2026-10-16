@@ -299,7 +299,8 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] Busca no projeto: campo no topo da aba Arquivos (`git grep`), clique abre na linha
 - [x] Ajuda (?) e paleta com os atalhos novos
 - [x] Teste no app num repo descartável
-- Fora desta rodada: formatar, renomear símbolo (LSP), dobrar código, dividir o editor
+- Desvios do protótipo: o "Ir para a linha" não mostra o intervalo (1–N); ao arrastar acende só a pasta sob o mouse (no vazio, a lista inteira, mais fraca); o termo achado só é marcado quando o minúsculo da linha tem o mesmo tamanho
+- Fora desta rodada: formatar, renomear símbolo (LSP), dobrar código, dividir o editor, Ctrl+D (o gpui-base não expõe adicionar seleção), multi-cursor por Ctrl+Alt+↑/↓ (o sistema pega o atalho)
 
 ## Backlog (não entra sem decisão)
 

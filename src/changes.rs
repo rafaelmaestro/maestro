@@ -71,6 +71,16 @@ pub fn grep(root: &Path, q: &str) -> Vec<Hit> {
     .unwrap_or_default()
 }
 
+/// Onde `q` aparece em `text` sem olhar caixa; com acento o minúsculo pode mudar de tamanho, aí não marca.
+pub fn find_ci(text: &str, q: &str) -> Option<std::ops::Range<usize>> {
+    let lower = text.to_lowercase();
+    if lower.len() != text.len() || q.is_empty() {
+        return None;
+    }
+    let i = lower.find(&q.to_lowercase())?;
+    (text.is_char_boundary(i) && text.is_char_boundary(i + q.len())).then(|| i..i + q.len())
+}
+
 /// `caminho\0linha\0texto` por linha (`-z`: caminho com `:` não quebra).
 fn parse_grep(out: &str) -> Vec<Hit> {
     out.lines()
@@ -371,6 +381,13 @@ mod tests {
         assert!(link.file_type().is_symlink());
         assert!(copy(&root, "sumiu.ts", "vazia").is_err());
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn marca_o_termo_achado() {
+        assert_eq!(find_ci("const Nome = 1", "nome"), Some(6..10));
+        assert_eq!(find_ci("ação Ação", "ação"), Some(0..6));
+        assert_eq!(find_ci("x", "y"), None);
     }
 
     #[test]

@@ -984,8 +984,11 @@ impl Render for FileEditor {
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, window, cx| {
                 let k = &e.keystroke;
                 let m = &k.modifiers;
+                // dentro do Ctrl+F ou do "Ir para a linha" estas teclas são do campo
+                let here = this.state.read(cx).focus_handle(cx).is_focused(window);
                 match (k.key.as_str(), m.control, m.alt, m.shift) {
                     ("s", true, false, false) => this.save(cx),
+                    _ if !here => return,
                     ("/", true, false, false) => this.toggle_comment(window, cx),
                     ("up" | "down", false, true, false) => {
                         this.move_lines(k.key == "up", window, cx)
@@ -1107,6 +1110,10 @@ mod tests {
         assert_eq!(toggle_comment("  // a\n\n  //   b", "//"), "  a\n\n    b");
         assert_eq!(toggle_comment("x = 1", "#"), "# x = 1");
         assert_eq!(toggle_comment("#x", "#"), "x");
+        assert_eq!(
+            toggle_comment("  const nome = \"ação\"", "//"),
+            "  // const nome = \"ação\""
+        );
     }
 
     #[test]
@@ -1123,6 +1130,11 @@ mod tests {
         assert!(move_lines("a\nb", 2..3, false).is_none());
         let (r, s, _) = move_lines("a\nb", 2..3, true).unwrap();
         assert_eq!((r, s.as_str()), (0..3, "b\na"));
+        let t = "ação\né\n";
+        let b = line_block(t, 7..7);
+        assert_eq!(&t[b.clone()], "é");
+        let (r, s, by) = move_lines(t, b, true).unwrap();
+        assert_eq!((r, s.as_str(), by), (0..9, "é\nação", -7));
     }
 
     #[test]
