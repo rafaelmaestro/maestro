@@ -20,7 +20,7 @@ use lsp_types::DiagnosticSeverity;
 use crate::{
     blame::{self, Blame},
     diff::{self, Tok},
-    form::button,
+    form::{FieldEvent, TextField, button},
     lsp::{self, Server},
     lsp_editor::{Doc, Provider},
     mrs::{self, Row},
@@ -40,6 +40,10 @@ pub enum Event {
     OpenMr(Row),
     /// "Histórico do arquivo" do blame
     History,
+    /// Ctrl+W
+    CloseTab,
+    /// Ctrl+Tab (true) e Ctrl+Shift+Tab (false)
+    CycleTab(bool),
 }
 
 /// O servidor de linguagem deste arquivo.
@@ -98,6 +102,8 @@ pub struct FileEditor {
     _blame_task: Task<()>,
     /// onde o editor está na janela, medido no último frame (o blame se posiciona por ele)
     area: Rc<std::cell::Cell<Bounds<Pixels>>>,
+    /// Ctrl+G: o campo "Ir para a linha"
+    goto_field: Option<Entity<TextField>>,
     theme: Theme,
     _poll: Task<()>,
 }
@@ -129,6 +135,86 @@ pub fn line_ref(path: &str, text: &str, sel: Range<usize>) -> String {
         format!("@{path}:{a}")
     } else {
         format!("@{path}:{a}-{b}")
+    }
+}
+
+/// As linhas inteiras que a seleção toca, sem o `\n` final; seleção que termina no começo de linha não leva ela.
+fn line_block(text: &str, sel: Range<usize>) -> Range<usize> {
+    let end = if sel.end > sel.start && text[..sel.end].ends_with('\n') {
+        sel.end - 1
+    } else {
+        sel.end
+    };
+    let a = text[..sel.start].rfind('\n').map_or(0, |i| i + 1);
+    let b = text[end..].find('\n').map_or(text.len(), |i| end + i);
+    a..b.max(a)
+}
+
+fn comment_prefix(path: &str) -> Option<&'static str> {
+    let ext = path.rsplit('.').next()?;
+    Some(match ext {
+        "py" | "sh" | "bash" | "zsh" | "yml" | "yaml" | "toml" | "rb" | "tf" | "conf" | "env" => {
+            "#"
+        }
+        "sql" | "lua" | "hs" => "--",
+        "rs" | "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "go" | "java" | "kt" | "c" | "h"
+        | "cpp" | "cs" | "swift" | "scss" | "dart" | "php" | "proto" | "groovy" => "//",
+        _ => return None,
+    })
+}
+
+/// Ctrl+/: comenta as linhas (no recuo da menos recuada) ou descomenta se todas já estão.
+fn toggle_comment(block: &str, prefix: &str) -> String {
+    let lines: Vec<&str> = block.split('\n').collect();
+    let code = || lines.iter().filter(|l| !l.trim().is_empty());
+    let all = code().all(|l| l.trim_start().starts_with(prefix));
+    let indent = code()
+        .map(|l| l.len() - l.trim_start().len())
+        .min()
+        .unwrap_or(0);
+    lines
+        .iter()
+        .map(|l| {
+            if l.trim().is_empty() {
+                l.to_string()
+            } else if all {
+                let i = l.len() - l.trim_start().len();
+                let rest = &l[i + prefix.len()..];
+                format!("{}{}", &l[..i], rest.strip_prefix(' ').unwrap_or(rest))
+            } else {
+                format!("{}{prefix} {}", &l[..indent], &l[indent..])
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Alt+↑/↓: troca o bloco com a linha vizinha. Devolve (trecho trocado, texto novo, quanto o bloco andou).
+fn move_lines(text: &str, block: Range<usize>, up: bool) -> Option<(Range<usize>, String, isize)> {
+    let body = &text[block.clone()];
+    if up {
+        let prev_start = text[..block.start.checked_sub(1)?]
+            .rfind('\n')
+            .map_or(0, |i| i + 1);
+        let prev = &text[prev_start..block.start - 1];
+        Some((
+            prev_start..block.end,
+            format!("{body}\n{prev}"),
+            -(prev.len() as isize + 1),
+        ))
+    } else {
+        if block.end >= text.len() {
+            return None;
+        }
+        let next_end = text[block.end + 1..]
+            .find('\n')
+            .map_or(text.len(), |i| block.end + 1 + i);
+        let next = &text[block.end + 1..next_end];
+        Some((
+            block.start..next_end,
+            format!("{next}\n{body}"),
+            next.len() as isize + 1,
+        ))
     }
 }
 
@@ -320,6 +406,7 @@ impl FileEditor {
             blame_hover: (false, false),
             _blame_task: Task::ready(()),
             area: Rc::default(),
+            goto_field: None,
             theme,
             _poll: poll,
         }
@@ -423,6 +510,82 @@ impl FileEditor {
             }
             cx.notify();
         });
+    }
+
+    /// Troca `range` por `text` numa edição só do desfazer e deixa `sel` selecionado.
+    fn edit(
+        &mut self,
+        range: Range<usize>,
+        text: String,
+        sel: Range<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.state.update(cx, |s, cx| {
+            s.set_selected_range(range, cx);
+            s.replace(text, window, cx);
+            s.set_selected_range(sel, cx);
+        });
+        if let Lsp::Ready(doc) = &self.lsp {
+            doc.sync(&self.buffer(cx));
+        }
+        self.apply_diagnostics(cx);
+        cx.emit(Event::Changed);
+        cx.notify();
+    }
+
+    fn toggle_comment(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(prefix) = comment_prefix(&self.path) else {
+            return cx.emit(Event::Toast(format!("Não sei comentar {}", self.path)));
+        };
+        let (text, sel) = {
+            let s = self.state.read(cx);
+            (s.value().to_string(), s.selected_range())
+        };
+        let block = line_block(&text, sel.clone());
+        let new = toggle_comment(&text[block.clone()], prefix);
+        let delta = new.len() as isize - block.len() as isize;
+        let end = (sel.end as isize + delta).max(block.start as isize) as usize;
+        let start = if sel.is_empty() { end } else { block.start };
+        self.edit(block, new, start..end, window, cx);
+    }
+
+    fn move_lines(&mut self, up: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let (text, sel) = {
+            let s = self.state.read(cx);
+            (s.value().to_string(), s.selected_range())
+        };
+        let Some((range, new, by)) = move_lines(&text, line_block(&text, sel.clone()), up) else {
+            return;
+        };
+        let shift = |o: usize| (o as isize + by) as usize;
+        self.edit(range, new, shift(sel.start)..shift(sel.end), window, cx);
+    }
+
+    fn open_goto(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let t = self.theme.clone();
+        let f = cx.new(|cx| TextField::new(t, "", "Ir para a linha", false, true, cx));
+        cx.subscribe_in(&f, window, |this, f, e: &FieldEvent, window, cx| {
+            match e {
+                FieldEvent::Submit => {
+                    let n: u32 = f.read(cx).value.trim().parse().unwrap_or(0);
+                    if n > 0 {
+                        let last = this.buffer(cx).matches('\n').count() as u32;
+                        this.goto((n - 1).min(last), window, cx);
+                    }
+                }
+                FieldEvent::Cancel => {}
+                FieldEvent::Changed => return,
+            }
+            this.goto_field = None;
+            let f = this.focus_handle(cx);
+            window.focus(&f, cx);
+            cx.notify();
+        })
+        .detach();
+        window.focus(&f.read(cx).focus_handle(), cx);
+        self.goto_field = Some(f);
+        cx.notify();
     }
 
     /// Vai para a linha (0-based), como no "ir para a definição".
@@ -818,12 +981,21 @@ impl Render for FileEditor {
             .size_full()
             .flex()
             .flex_col()
-            .on_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| {
+            .on_key_down(cx.listener(|this, e: &KeyDownEvent, window, cx| {
                 let k = &e.keystroke;
-                if k.key == "s" && k.modifiers.control && !k.modifiers.shift {
-                    this.save(cx);
-                    cx.stop_propagation();
+                let m = &k.modifiers;
+                match (k.key.as_str(), m.control, m.alt, m.shift) {
+                    ("s", true, false, false) => this.save(cx),
+                    ("/", true, false, false) => this.toggle_comment(window, cx),
+                    ("up" | "down", false, true, false) => {
+                        this.move_lines(k.key == "up", window, cx)
+                    }
+                    ("g", true, false, false) => this.open_goto(window, cx),
+                    ("w", true, false, false) => cx.emit(Event::CloseTab),
+                    ("tab", true, false, back) => cx.emit(Event::CycleTab(!back)),
+                    _ => return,
                 }
+                cx.stop_propagation();
             }))
             .when(self.conflict.is_some(), |d| {
                 d.child(
@@ -900,14 +1072,58 @@ impl Render for FileEditor {
                             .left_0()
                             .size_full()
                     })
-                    .children(blame),
+                    .children(blame)
+                    .children(self.goto_field.clone().map(|f| {
+                        div()
+                            .absolute()
+                            .top(px(8.))
+                            .left_0()
+                            .right_0()
+                            .flex()
+                            .justify_center()
+                            .child(
+                                div()
+                                    .w(px(260.))
+                                    .p(px(6.))
+                                    .bg(t.raise)
+                                    .border_1()
+                                    .border_color(t.accent)
+                                    .rounded(px(6.))
+                                    .shadow_lg()
+                                    .child(f),
+                            )
+                    })),
             )
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Sync, line_ref, sync};
+    use super::{Sync, line_block, line_ref, move_lines, sync, toggle_comment};
+
+    #[test]
+    fn comenta_e_descomenta() {
+        assert_eq!(toggle_comment("  a\n\n    b", "//"), "  // a\n\n  //   b");
+        assert_eq!(toggle_comment("  // a\n\n  //   b", "//"), "  a\n\n    b");
+        assert_eq!(toggle_comment("x = 1", "#"), "# x = 1");
+        assert_eq!(toggle_comment("#x", "#"), "x");
+    }
+
+    #[test]
+    fn bloco_e_mover_linha() {
+        let t = "a\nbb\nccc\n";
+        assert_eq!(line_block(t, 3..3), 2..4);
+        assert_eq!(line_block(t, 0..5), 0..4);
+        assert_eq!(line_block(t, 2..7), 2..8);
+        let (r, s, by) = move_lines(t, 2..4, true).unwrap();
+        assert_eq!((r, s.as_str(), by), (0..4, "bb\na", -2));
+        let (r, s, by) = move_lines(t, 2..4, false).unwrap();
+        assert_eq!((r, s.as_str(), by), (2..8, "ccc\nbb", 4));
+        assert!(move_lines(t, 0..1, true).is_none());
+        assert!(move_lines("a\nb", 2..3, false).is_none());
+        let (r, s, _) = move_lines("a\nb", 2..3, true).unwrap();
+        assert_eq!((r, s.as_str()), (0..3, "b\na"));
+    }
 
     #[test]
     fn disco_mudou() {

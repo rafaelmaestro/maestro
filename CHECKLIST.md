@@ -295,7 +295,7 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] Árvore: Copiar, Recortar, Colar, Duplicar e Copiar caminho (menu e Ctrl+C/X/V com a árvore em foco); colar com nome livre (`x cópia.ts`); pasta não entra nela mesma + teste
 - [x] Árvore: arrastar e soltar move para a pasta (no vazio vai para a raiz); abas seguem
 - [x] Árvore: teclado (↑/↓, →/←, Enter, F2, Delete)
-- [ ] Editor: Ctrl+/ comenta, Alt+↑/↓ move linha, Ctrl+G vai para a linha, Ctrl+W fecha a aba, Ctrl+Tab troca de aba (Ctrl+Z desfaz cada um)
+- [x] Editor: Ctrl+/ comenta, Alt+↑/↓ move linha, Ctrl+G vai para a linha, Ctrl+W fecha a aba, Ctrl+Tab troca de aba (Ctrl+Z desfaz cada um)
 - [ ] Busca no projeto: campo no topo da aba Arquivos (`git grep`), clique abre na linha
 - [ ] Ajuda (?) e paleta com os atalhos novos
 - [ ] Teste no app num repo descartável

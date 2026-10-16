@@ -525,6 +525,20 @@ impl Review {
                 editor::Event::Open(abs, line) => this.open_at(abs, *line, window, cx),
                 editor::Event::OpenMr(row) => cx.emit(Event::OpenMr(row.clone())),
                 editor::Event::History => this.open_history(cx),
+                editor::Event::CloseTab => this.close_file(this.active, window, cx),
+                editor::Event::CycleTab(next) => {
+                    let n = this.editors.len();
+                    if n > 1 {
+                        this.active = if *next {
+                            (this.active + 1) % n
+                        } else {
+                            (this.active + n - 1) % n
+                        };
+                        let f = this.focus_handle(cx);
+                        window.focus(&f, cx);
+                        cx.notify();
+                    }
+                }
             },
         )
         .detach();
