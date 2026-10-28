@@ -345,12 +345,13 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 ## Notas
 
 - [x] Protótipo: notas dentro do Vault (seção Notas, + Nova nota, Alt+7), Editar | Ver com o Markdown renderizado, salva sozinho, Formatar com IA com Desfazer
-- [ ] `notes.rs`: nome do arquivo pelo `# título`, formatar com `claude -p` (haiku, sem ferramentas)
-- [ ] Vault: seção Notas e + Nova nota (o arquivo nasce no Enter do título)
-- [ ] Vault: Editar | Ver em toda nota, salva sozinho, "editado por você" na Atividade ao sair da edição
-- [ ] Vault: Markdown com listas numeradas e aninhadas, blocos de código, citação e `###`
-- [ ] Vault: ✦ Formatar com IA (Ctrl+Shift+F) com Desfazer; Alt+7 abre uma nota nova
-- [ ] Teste no app (sessão `maestro-test`, vault temporário)
+- [x] `notes.rs`: nome do arquivo pelo `# título`, formatar com `claude -p` (haiku, sem ferramentas)
+- [x] Vault: seção Notas e + Nova nota (o arquivo nasce no Enter do título)
+- [x] Vault: Editar | Ver em toda nota, salva sozinho, "editado por você" na Atividade ao sair da edição
+- [x] Vault: Markdown com listas numeradas e aninhadas, blocos de código, citação e `###`
+- [x] Vault: ✦ Formatar com IA (Ctrl+Shift+F) com Desfazer; Alt+7 abre uma nota nova
+- [x] Teste no app (sessão `maestro-test`, vault temporário)
+- Desvios: o nome do arquivo sai do título só na criação (renomear o título depois não renomeia o .md); o Desfazer do "editado por você" volta a sessão de edição inteira
 
 ## Backlog (não entra sem decisão)
 

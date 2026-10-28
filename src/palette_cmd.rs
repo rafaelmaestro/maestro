@@ -11,6 +11,7 @@ pub enum VaultGo {
     Today,
     Log,
     Open,
+    NewNote,
 }
 
 /// O que a paleta pede para o Shell fazer.
@@ -59,6 +60,8 @@ pub enum Cmd {
     Kcmd,
     News,
     NewsBrief,
+    /// Ctrl+Shift+F no Vault: o Haiku arruma o Markdown da nota aberta
+    NoteFormat,
     /// o modo Bancos (túneis dos aliases do zsh)
     Db,
     /// Ctrl+Shift+D: o seletor de bancos, de qualquer tela
@@ -113,6 +116,12 @@ pub fn commands() -> Vec<Item> {
         c("Vault: Nota do repo", "", Some(Vault(VaultGo::RepoNote))),
         c("Vault: Daily de hoje", "", Some(Vault(VaultGo::Today))),
         c("Vault: Atividade", "", Some(Vault(VaultGo::Log))),
+        c("Vault: Nova nota", "Alt+7", Some(Vault(VaultGo::NewNote))),
+        c(
+            "Vault: Formatar nota com IA",
+            "Ctrl+Shift+F",
+            Some(NoteFormat),
+        ),
         c("Ir para: Vault", "Alt+4", Some(Vault(VaultGo::Open))),
         c("Ajuda: Rever tutorial desta tela", "", Some(Tutorial)),
         c("Feature: Remover a atual…", "", Some(RemoveFeature)),
