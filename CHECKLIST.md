@@ -342,6 +342,14 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] Teste no app (sessão `maestro-test`, repo descartável)
 - Desvios: o diálogo não ganhou rolagem própria (o prompt para em 10 linhas e cabe na tela); colar logo depois de um texto longo só rola até o cursor na próxima tecla (gpui-component)
 
+## Notas
+
+- [x] Protótipo: modo Notas (Alt+7), lista de `notas/` do vault, editor livre que salva sozinho, Formatar com IA com Desfazer
+- [ ] `notes.rs`: listar `notas/`, nome do arquivo pelo `# título`, formatar com `claude -p` (haiku, sem ferramentas)
+- [ ] `NotesView`: lista, editor, salvar via `vault::write`, Formatar com IA em segundo plano
+- [ ] Ligar o modo: título, paleta, Alt+7, dicas, esconder lateral/terminal/revisão
+- [ ] Teste no app (sessão `maestro-test`, vault temporário)
+
 ## Backlog (não entra sem decisão)
 
 - Conflitos entre features (ripwire branch conflicts)

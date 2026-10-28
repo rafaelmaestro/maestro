@@ -539,6 +539,7 @@ legend{color:var(--muted);font-size:12px;padding:0 4px}
       <button id="mDb" aria-pressed="false" title="Alt+3 · túneis cloud-sql-proxy dos aliases sql_* do zsh">Bancos<span class="count" id="dbCount" style="color:var(--ok)"></span></button>
       <button id="mVault" aria-pressed="false">Vault</button>
       <button id="mNews" aria-pressed="false" title="Alt+5">News<span class="count" id="newsCount" style="color:var(--cyan)"></span></button>
+      <button id="mNotes" aria-pressed="false" title="Alt+7 · anotações livres, salvas em ~/vault/notas/">Notas</button>
     </nav>
     <button class="qbtn" id="qBtn" title="Fila de atenção (Ctrl+Shift+Espaço = próximo)">Fila <b id="qCount"></b></button>
     <span class="sp"></span>
@@ -863,7 +864,7 @@ function renderFrame(){
   if(S.rw) m.style.setProperty('--rw',m.dataset.right==='on'?S.rw+'px':'0px');
   $('#mFeat').setAttribute('aria-pressed',S.mode==='feat'||S.mode==='audit'); $('#mMrs').setAttribute('aria-pressed',S.mode==='mrs'||S.mode==='mr'); $('#mVault').setAttribute('aria-pressed',S.mode==='vault');
   $('#mNews').setAttribute('aria-pressed',S.mode==='news'); $('#mNews').classList.toggle('dim',!S.newsToken);
-  $('#mDb').setAttribute('aria-pressed',S.mode==='db'); $('#dbCount').textContent=DBS.filter(d=>d.st==='up').length||'';
+  $('#mDb').setAttribute('aria-pressed',S.mode==='db'); $('#mNotes').setAttribute('aria-pressed',S.mode==='notes'); $('#dbCount').textContent=DBS.filter(d=>d.st==='up').length||'';
   $('#newsCount').textContent=S.newsToken?newsShown().filter(n=>n.aff.length&&!n.read).length||'':'';
   const att=FEATS.filter(f=>f.st==='blocked').length; $('#attCount').textContent=att?`${att} !`:'';
   $('#qCount').textContent=attention().length||'';
@@ -878,6 +879,7 @@ function renderLeft(){
   if (S.mode==='mr') return renderMRFiles(el);
   if (S.mode==='vault') return renderVaultTree(el);
   if (S.mode==='news') return renderNewsLeft(el);
+  if (S.mode==='notes') return renderNotesLeft(el);
   if (S.mode==='db') return renderDbLeft(el);
   if (S.mode!=='feat'&&S.mode!=='audit'){ el.innerHTML=''; return; }
   const f=feat();
@@ -1056,6 +1058,7 @@ function renderCenter(){
   if (S.mode==='audit') return renderAudit(el);
   if (S.mode==='vault') return renderVaultMain(el);
   if (S.mode==='news') return renderNews(el);
+  if (S.mode==='notes') return renderNotes(el);
   if (S.mode==='db') return renderDb(el);
   const f=feat();
   const keep={}; let foc=null; el.querySelectorAll('.tin-in').forEach(i=>{ keep[i.dataset.t]=i.value; if(i===document.activeElement) foc=i.dataset.t; });
@@ -2413,6 +2416,67 @@ function renderNews(el){
   el.querySelectorAll('[data-nbm]').forEach(x=>x.onclick=()=>{ const id=+x.dataset.nbm; S.newsBm.has(id)?S.newsBm.delete(id):S.newsBm.add(id); renderNews(el); toast(S.newsBm.has(id)?'Bookmark salvo no daily.dev':'Bookmark removido do daily.dev'); });
   el.querySelectorAll('[data-nx]').forEach(x=>x.onclick=()=>{ const id=+x.dataset.nx, n=NEWS.find(y=>y.id===id); S.newsHidden.add(id); render(); toast(`Oculto. Menos de #${n.tags[0]} de ${n.src} daqui pra frente (só local)`,{label:'Desfazer',run:()=>{ S.newsHidden.delete(id); render(); }}); });
 }
+/* ---------- notas: texto livre salvo em ~/vault/notas/, Formatar com IA ---------- */
+const NOTES=[
+  {k:'notas/rotacionar-token-do-gitlab.md',when:'hoje 10:42',text:`# rotacionar token do gitlab
+gera em gitlab.com/-/user_settings/personal_access_tokens, escopo api e read_repository, validade 90 dias
+depois tem q atualizar o glab: glab auth login --hostname gitlab.com e colar o token
+e no vault-roleset tbm se for o token do CI!! senão a pipeline quebra no dia seguinte
+conferir com glab auth status`},
+  {k:'notas/subir-tunel-do-banco-de-stg.md',when:'ontem',text:`# Subir túnel do banco de stg
+
+1. \`gcloud auth application-default login\`
+2. \`sql_stg_experts\` (alias do zsh)
+3. Conectar em \`localhost:5433\`
+
+> A senha está no Secret Manager: \`experts-db-stg-password\`.`},
+  {k:'notas/ideias-soltas.md',when:'13 out',text:`# ideias soltas
+- notificação no celular qdo o claude trava
+- olhar o tal do pnpm catalog`},
+];
+const FORMATTED={'notas/rotacionar-token-do-gitlab.md':`# Rotacionar token do GitLab
+
+1. Gerar o token em \`gitlab.com/-/user_settings/personal_access_tokens\`
+   - Escopos: \`api\` e \`read_repository\`
+   - Validade: 90 dias
+2. Atualizar o glab:
+   \`\`\`sh
+   glab auth login --hostname gitlab.com
+   \`\`\`
+   e colar o token.
+3. **Se for o token do CI**, atualizar também no \`vault-roleset\`. Senão a pipeline quebra no dia seguinte.
+4. Conferir:
+   \`\`\`sh
+   glab auth status
+   \`\`\``};
+const noteTitle=t=>((t.match(/^#\s+(.+)$/m)||[])[1]||'').trim();
+const noteSlug=t=>noteTitle(t).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'nota-'+TODAY;
+function openNotes(){ S.mode='notes'; if(!S.nk) S.nk=NOTES[0].k; render(); setTimeout(()=>{ const t=$('#nT'); if(t) t.focus(); }); }
+function newNote(){ const n={k:'notas/nova-nota.md',when:'agora',text:'# '}; NOTES.unshift(n); S.nk=n.k; render(); const t=$('#nT'); t.focus(); t.setSelectionRange(2,2); }
+function curNote(){ return NOTES.find(n=>n.k===S.nk)||NOTES[0]; }
+function renderNotesLeft(el){
+  el.innerHTML=`<div class="repo">notas <span class="mono">~/vault/notas</span></div>
+    <div class="feats"><button class="feat" id="nNew"><span class="g cm">+</span><span class="b">Nova nota</span><span class="k"></span></button></div>
+    <div class="fsep">Recentes <span class="mono" style="letter-spacing:0">${NOTES.length}</span></div>
+    <div class="flist" style="padding:0 0 6px">${NOTES.map(n=>`<button data-nk="${n.k}" class="${S.nk===n.k?'on':''}" title="~/vault/${n.k}"><span class="nm">${esc(noteTitle(n.text)||'sem título')}</span><span class="st">${n.when}</span></button>`).join('')}</div>
+    <div class="flist"><div class="none">Cada nota é um .md do vault: aparece no Obsidian e no grafo do Vault.</div></div>`;
+  el.querySelectorAll('[data-nk]').forEach(b=>b.onclick=()=>{ S.nk=b.dataset.nk; S.nfmt=null; render(); });
+  el.querySelector('#nNew').onclick=newNote;
+}
+function renderNotes(el){
+  const n=curNote(), busy=S.nfmt==='run';
+  el.innerHTML=`<div class="mrh"><div class="l1"><h2>${esc(noteTitle(n.text)||'sem título')}</h2><span class="mono muted">~/vault/notas/${noteSlug(n.text)}.md</span></div>
+    <div class="l2"><span class="muted" id="nSt" style="font-size:12px">${busy?'Claude formatando… (Haiku, sem ferramentas)':'salvo'}</span><span class="sp"></span><button class="btn" id="nVault">Abrir no Vault</button><button class="btn pri" id="nFmt" ${busy?'disabled':''} title="Ctrl+Shift+F">${busy?'Formatando…':'✦ Formatar com IA'}</button></div></div>
+    <div style="flex:1;min-height:0;display:grid;padding:12px 18px"><textarea id="nT" spellcheck="false" ${busy?'readonly':''} placeholder="# título&#10;&#10;escreva livre: procedimento, comando, lembrete…" style="width:100%;height:100%;max-width:900px;resize:none;background:var(--win);border:1px solid var(--line);border-radius:5px;color:var(--fg);font:13px/1.6 var(--mono);padding:12px 14px;${busy?'opacity:.6':''}">${esc(n.text)}</textarea></div>`;
+  const t=el.querySelector('#nT'); let tm;
+  t.oninput=()=>{ n.text=t.value; n.when='agora'; $('#nSt').textContent='salvando…'; clearTimeout(tm); tm=setTimeout(()=>{ const st=$('#nSt'); if(st) st.textContent='salvo'; renderNotesLeft($('#left')); el.querySelector('h2').textContent=noteTitle(n.text)||'sem título'; el.querySelector('.l1 .mono').textContent=`~/vault/notas/${noteSlug(n.text)}.md`; },800); };
+  el.querySelector('#nFmt').onclick=formatNote;
+  el.querySelector('#nVault').onclick=()=>toast(`No app abre ~/vault/notas/${noteSlug(n.text)}.md no Vault`);
+}
+function formatNote(){ const n=curNote(); if(S.nfmt==='run') return; if(!n.text.trim()||n.text.trim()==='#'){ toast('Nada para formatar ainda'); return; }
+  S.nfmt='run'; renderNotes($('#center'));
+  setTimeout(()=>{ const old=n.text; n.text=FORMATTED[n.k]||n.text.replace(/^#\s+(.+)$/m,(_,x)=>'# '+x[0].toUpperCase()+x.slice(1)); S.nfmt=null; if(S.mode==='notes') render();
+    toast(`Formatado: ${noteTitle(n.text)} · ~4 mil tokens`,{label:'Desfazer',run:()=>{ n.text=old; if(S.mode==='notes') render(); }}); },1400); }
 let BRIEF=false;
 function openBrief(){ if(!S.newsToken){ toast('Resumo do dia precisa do token do daily.dev'); return; } BRIEF=true; paintBrief(); }
 function closeBrief(){ BRIEF=false; paintBrief(); }
@@ -2431,6 +2495,7 @@ const HINTS={
   audit:[['Nova auditoria…','incremental ou completa'],['espaço','marcar achado'],['?','atalhos']],
   mr:[['n p','próximo/anterior arquivo'],['V','visto e próximo'],['O','abrir no GitLab'],['R','atualizar'],['C','comentar linha'],['?','perguntar sobre o bloco'],['S','lado a lado/unificado'],['⇧R','revisar com Claude'],['Ctrl+⏎','publicar'],['Ctrl+Z','desfazer descarte'],['Esc','voltar']],
   db:[['Alt+3','Bancos'],['j k','navegar'],['Enter','liga/desliga'],['/','filtrar'],['Ctrl+Shift+D','ligar de qualquer tela']],
+  notes:[['Alt+7','Notas'],['Ctrl+Shift+F','formatar com IA'],['# título','vira o nome do arquivo'],['?','atalhos']],
   news:[['Alt+5','News'],['título','abrir'],['Não relevante','oculta só aqui'],['?','atalhos']],
 };
 function renderHints(){ $('#hints').innerHTML=HINTS[S.mode].map(([k,v])=>`<span><kbd>${k}</kbd> ${v}</span>`).join(''); }
@@ -2505,6 +2570,9 @@ const CMDS=[
   ['MR: Abrir bots-api !124','',()=>openMR(MRS[0])],
   ['Simular: notificação de MR (resposta à sua thread)','',()=>simNotify(true)],
   ['Ir para: News','Alt+5',openNews],
+  ['Ir para: Notas','Alt+7',openNotes],
+  ['Notas: Nova nota','',()=>{ openNotes(); newNote(); }],
+  ['Notas: Formatar com IA','Ctrl+Shift+F',()=>{ openNotes(); formatNote(); }],
   ['Ir para: Bancos','Alt+3',()=>setMode('db')],
   ['News: Resumo do dia','',openBrief],
   ['News: Simular sem token / com token','',()=>{ S.newsToken=!S.newsToken; if(!S.newsToken) closeBrief(); render(); toast(S.newsToken?'Token do daily.dev encontrado':'Sem ~/.config/maestro/dailydev.token'); }],
@@ -2604,6 +2672,8 @@ document.addEventListener('keydown',e=>{
   if(OV&&OV.type==='dlg'){ if(ctrl&&k==='Enter'){ e.preventDefault(); OV.ok(); } return; }
   if(OV) return;
   if(ctrl&&e.shiftKey&&e.altKey&&(k==='ArrowLeft'||k==='ArrowRight')&&e.target.id==='code'){ e.preventDefault(); wordSel(e.target,k==='ArrowRight'); return; }
+  if(e.altKey&&!ctrl&&e.code==='Digit7'){ e.preventDefault(); openNotes(); return; }
+  if(ctrl&&e.shiftKey&&k.toLowerCase()==='f'&&S.mode==='notes'){ e.preventDefault(); formatNote(); return; }
   if(e.altKey&&!ctrl&&/^Digit[1-6]$/.test(e.code)){ e.preventDefault(); [()=>setMode('feat'),()=>setMode('mrs'),()=>setMode('db'),()=>openVault(),openNews,()=>openPal('att')][+e.code.slice(5)-1](); return; }
   if(!ctrl&&!e.altKey&&!e.shiftKey&&!inField&&e.key==='s'&&S.mode==='mr'){ e.preventDefault(); S.layout=S.layout==='split'?'unified':'split'; rerender(); return; }
   if(ctrl&&e.shiftKey){
@@ -2660,7 +2730,7 @@ document.addEventListener('keydown',e=>{
   if(S.mode==='mr'&&k==='r'){ e.preventDefault(); refreshMR(S.mr); return; }
   if(S.mode==='feat'&&k.length===1&&!(e.target.closest&&e.target.closest('#right'))){ focusTerm(); }
 });
-$('#mVault').onclick=()=>openVault(); $('#mFeat').onclick=()=>setMode('feat'); $('#mMrs').onclick=()=>setMode('mrs'); $('#mNews').onclick=openNews; $('#mDb').onclick=()=>setMode('db');
+$('#mVault').onclick=()=>openVault(); $('#mFeat').onclick=()=>setMode('feat'); $('#mMrs').onclick=()=>setMode('mrs'); $('#mNews').onclick=openNews; $('#mNotes').onclick=openNotes; $('#mDb').onclick=()=>setMode('db');
 $('#qBtn').onclick=()=>openPal('att'); $('#hFile').onclick=()=>openPal('file'); $('#hCmd').onclick=()=>openPal('cmd'); $('#hHelp').onclick=()=>openHelp();
 if(innerWidth<760){ S.left=false; }
 render();
