@@ -158,6 +158,8 @@ const NEWS_HINTS: &[(&str, &str, bool)] = &[
 ];
 
 const VAULT_HINTS: &[(&str, &str, bool)] = &[
+    ("Alt+7", "nova nota", true),
+    ("Ctrl+Shift+F", "formatar com IA", true),
     ("clique", "abrir nota", true),
     ("[[link]]", "navegar", true),
     ("◎ Grafo", "visão geral", true),
@@ -486,6 +488,7 @@ impl Shell {
                 "4" => Cmd::Vault(crate::palette_cmd::VaultGo::Open),
                 "5" => Cmd::News,
                 "6" => Cmd::AttentionMenu,
+                "7" => Cmd::Vault(crate::palette_cmd::VaultGo::NewNote),
                 _ => return,
             };
             cx.stop_propagation();
@@ -498,6 +501,7 @@ impl Shell {
                 "l" => return self.run(Cmd::SendSelection, window, cx),
                 "o" => return self.run(Cmd::OpenFileMenu, window, cx),
                 "b" => return self.run(Cmd::ToggleLeft, window, cx),
+                "f" if self.in_vault => return self.run(Cmd::NoteFormat, window, cx),
                 "f" => return self.run(Cmd::Files, window, cx),
                 "k" => return self.run(Cmd::Kcmd, window, cx),
                 "d" => return self.run(Cmd::DbMenu, window, cx),
@@ -2345,13 +2349,16 @@ impl Shell {
                     .and_then(|s| s.read(cx).top_repo())
                     .and_then(|r| r.file_name().map(|n| n.to_string_lossy().into_owned()));
                 let v = self.vault_view(window, cx);
-                v.update(cx, |v, cx| v.go(&to, repo, cx));
+                v.update(cx, |v, cx| match to {
+                    crate::palette_cmd::VaultGo::NewNote => v.new_note(window, cx),
+                    _ => v.go(&to, repo, cx),
+                });
                 self.in_vault = true;
                 self.in_news = false;
                 self.in_db = false;
                 self.in_mrs = false;
                 self.in_audit = false;
-                let f = v.read(cx).focus_handle();
+                let f = v.read(cx).focus_target(cx);
                 window.focus(&f, cx);
                 if self.tour.is_none() && !tour::seen("vault") {
                     self.tour = Some((tour::VAULT, "vault", 0));
@@ -2416,6 +2423,10 @@ impl Shell {
                 }
                 return cx.notify();
             }
+            Cmd::NoteFormat => match self.vault.clone().filter(|_| self.in_vault) {
+                Some(v) => v.update(cx, |v, cx| v.format(cx)),
+                None => self.toast("Abra uma nota do Vault para formatar".into(), cx),
+            },
             Cmd::NewsBrief => {
                 if crate::news::has_token() {
                     self.brief = true;
@@ -3262,6 +3273,7 @@ impl Shell {
                     true,
                 ),
                 ("Alt+1…6", "Features, MRs, Bancos, Vault, News, Fila", true),
+                ("Alt+7", "nota nova no Vault", true),
                 ("Ctrl+Shift+P", "comandos", true),
                 ("Ctrl+Shift+K", "comando por descrição", true),
             ]

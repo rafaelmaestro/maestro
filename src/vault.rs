@@ -213,6 +213,27 @@ pub fn write(rel: &str, text: &str, desc: String) -> Result<Write, String> {
     })
 }
 
+/// O salvar automático das Notas: sem linha na Atividade a cada pausa na digitação.
+pub fn save(rel: &str, text: &str) -> Result<(), String> {
+    let path = dir().join(rel);
+    ours(&path, Some(text));
+    if let Some(d) = path.parent() {
+        std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, text).map_err(|e| e.to_string())
+}
+
+/// Uma edição que o salvar automático já gravou: só a linha na Atividade, com o texto de antes.
+pub fn edited(rel: &str, before: Option<String>, desc: String) -> Write {
+    log(&desc);
+    Write {
+        at: SystemTime::now(),
+        desc,
+        path: dir().join(rel),
+        before,
+    }
+}
+
 pub fn undo(w: &Write) -> Result<(), String> {
     ours(&w.path, w.before.as_deref());
     let r = match &w.before {

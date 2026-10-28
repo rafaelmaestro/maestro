@@ -1,7 +1,7 @@
 use std::{collections::HashMap, ops::Range, time::Duration};
 
 use gpui_kit::{
-    component::input::{Editor, EditorState},
+    component::input::{Editor, EditorState, InputEvent},
     prelude::FluentBuilder,
     *,
 };
@@ -9,12 +9,16 @@ use gpui_kit::{
 use crate::{
     form::{FieldEvent, TextField, button, checkbox},
     graph::{self, Graph},
+    notes,
     review::Redo,
     sidebar::Sidebar,
     theme::{self, Theme},
     tour::{self, Anchors},
     vault::{self, Note},
 };
+
+/// A nota nova antes do Enter do título: ainda sem arquivo.
+const NEW: &str = "notas/…";
 
 pub enum Event {
     Toast(String, Option<Redo>),
@@ -51,6 +55,13 @@ pub struct VaultView {
     view: View,
     query: Entity<TextField>,
     editing: Option<Entity<EditorState>>,
+    /// o texto quando a edição começou: ao sair dela, um "editado por você" com Desfazer
+    snap: Option<String>,
+    edit_key: String,
+    /// o texto em disco da nota em edição
+    saved: String,
+    formatting: Option<String>,
+    _save: Option<Task<()>>,
     summary: Option<String>,
     graph: Entity<Graph>,
     sidebar: Option<Entity<Sidebar>>,
@@ -199,6 +210,11 @@ impl VaultView {
             view: View::Note(String::new()),
             query,
             editing: None,
+            snap: None,
+            edit_key: String::new(),
+            saved: String::new(),
+            formatting: None,
+            _save: None,
             summary: None,
             graph,
             sidebar,
@@ -278,13 +294,21 @@ impl VaultView {
                 None => self.open(Self::today_key(), cx),
             },
             Open => self.default_note(repo),
+            NewNote => {}
         }
         cx.notify();
     }
 
+    /// O foco ao entrar no modo: o editor, se houver um aberto.
+    pub fn focus_target(&self, cx: &App) -> FocusHandle {
+        self.editing
+            .as_ref()
+            .map_or_else(|| self.focus.clone(), |e| e.read(cx).focus_handle(cx))
+    }
+
     fn open(&mut self, key: String, cx: &mut Context<Self>) {
+        self.end_edit(cx);
         self.view = View::Note(key);
-        self.editing = None;
         self.summary = None;
         self.refresh_graph(cx);
         cx.notify();
@@ -322,21 +346,170 @@ impl VaultView {
     }
 
     fn start_edit(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let text = self
+        let text = match key {
+            NEW => "# ".to_string(),
+            k => self
+                .notes
+                .iter()
+                .find(|n| n.key == k)
+                .map(|n| n.text.clone())
+                .unwrap_or_default(),
+        };
+        let e = cx.new(|cx| {
+            EditorState::new(window, cx)
+                .soft_wrap(true)
+                .default_value(text.clone())
+        });
+        cx.subscribe(&e, |this, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::Change) {
+                this._save = Some(cx.spawn(async move |this, cx| {
+                    cx.background_executor()
+                        .timer(Duration::from_millis(800))
+                        .await;
+                    let _ = this.update(cx, |this, cx| this.autosave(cx));
+                }));
+                cx.notify();
+            }
+        })
+        .detach();
+        if key == NEW {
+            e.update(cx, |s, cx| s.set_selected_range(2..2, cx));
+        }
+        let f = e.read(cx).focus_handle(cx);
+        window.focus(&f, cx);
+        self.snap = (key != NEW).then(|| text.clone());
+        self.saved = if key == NEW { String::new() } else { text };
+        self.edit_key = key.to_string();
+        self.editing = Some(e);
+        cx.notify();
+    }
+
+    /// Alt+7: uma nota em `notas/`, que só ganha arquivo no Enter do título.
+    pub fn new_note(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open(NEW.into(), cx);
+        self.start_edit(NEW, window, cx);
+    }
+
+    fn editing_key(&self) -> Option<String> {
+        self.editing.as_ref().map(|_| self.edit_key.clone())
+    }
+
+    /// Salva sem linha na Atividade; a nota nova vira `notas/<título>.md` no primeiro Enter.
+    fn autosave(&mut self, cx: &mut Context<Self>) {
+        let (Some(key), Some(e)) = (self.editing_key(), &self.editing) else {
+            return;
+        };
+        let text = e.read(cx).value().to_string();
+        if text == self.saved {
+            return;
+        }
+        let new = key == NEW;
+        if new && !notes::ready(&text) {
+            return;
+        }
+        let key = if new {
+            notes::free_key(&vault::dir(), &text)
+        } else {
+            key
+        };
+        if let Err(e) = vault::save(&key, &text) {
+            return cx.emit(Event::Toast(
+                format!("vault: não deu para salvar ({e})"),
+                None,
+            ));
+        }
+        self.saved = text.clone();
+        match self.notes.iter_mut().find(|n| n.key == key) {
+            Some(n) => n.text = text,
+            None => self.notes = vault::load(&vault::dir()),
+        }
+        if new {
+            if self.view == View::Note(NEW.into()) {
+                self.view = View::Note(key.clone());
+            }
+            self.edit_key = key.clone();
+            let w = vault::edited(&key, None, format!("{key} criada por você"));
+            cx.emit(Event::Toast(
+                format!("vault: {}", w.desc),
+                Some(Redo::Vault(w)),
+            ));
+        }
+        cx.notify();
+    }
+
+    /// Fecha o editor: o que mudou desde que ele abriu vai para a Atividade, com Desfazer.
+    fn end_edit(&mut self, cx: &mut Context<Self>) {
+        self.autosave(cx);
+        self._save = None;
+        if self.editing.take().is_none() {
+            return;
+        }
+        let key = std::mem::take(&mut self.edit_key);
+        if let Some(before) = self.snap.take()
+            && before != self.saved
+        {
+            let w = vault::edited(&key, Some(before), format!("{key} editado por você"));
+            cx.emit(Event::Toast(
+                format!("vault: {}", w.desc),
+                Some(Redo::Vault(w)),
+            ));
+        }
+        if key == NEW && self.view == View::Note(NEW.into()) {
+            self.view = View::Note(Self::today_key());
+        }
+    }
+
+    /// O `✦ Formatar com IA`: o Haiku arruma o Markdown; o Desfazer devolve o texto de antes.
+    pub fn format(&mut self, cx: &mut Context<Self>) {
+        let View::Note(key) = self.view.clone() else {
+            return;
+        };
+        if self.formatting.is_some() || key == Self::today_key() {
+            return;
+        }
+        if key == NEW {
+            return cx.emit(Event::Toast(
+                "Escreva o título e dê Enter: a nota ganha o arquivo e aí dá para formatar".into(),
+                None,
+            ));
+        }
+        self.end_edit(cx);
+        let Some(text) = self
             .notes
             .iter()
             .find(|n| n.key == key)
             .map(|n| n.text.clone())
-            .unwrap_or_default();
-        let e = cx.new(|cx| {
-            EditorState::new(window, cx)
-                .soft_wrap(true)
-                .default_value(text)
-        });
-        let f = e.read(cx).focus_handle(cx);
-        window.focus(&f, cx);
-        self.editing = Some(e);
+            .filter(|t| !notes::title(t).is_empty())
+        else {
+            return cx.emit(Event::Toast("Nada para formatar ainda".into(), None));
+        };
+        self.formatting = Some(key.clone());
         cx.notify();
+        cx.spawn(async move |this, cx| {
+            let r = cx
+                .background_executor()
+                .spawn(async move { notes::format(&text) })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.formatting = None;
+                match r {
+                    Ok((md, tokens)) => this.write(
+                        &key,
+                        md,
+                        format!(
+                            "{key} formatada com IA (~{} mil tokens)",
+                            tokens.div_ceil(1000)
+                        ),
+                        cx,
+                    ),
+                    Err(e) => {
+                        cx.emit(Event::Toast(format!("Formatar com IA falhou: {e}"), None));
+                        cx.notify();
+                    }
+                }
+            });
+        })
+        .detach();
     }
 
     /// O `vSum` do protótipo: uma prévia, que só vai para a daily no "Salvar".
@@ -465,8 +638,22 @@ impl VaultView {
             );
             body = &rest[end + 5..];
         }
+        let mut code: Option<String> = None;
         for (i, l) in body.lines().enumerate() {
             let id: ElementId = (SharedString::from(key.to_string()), i).into();
+            if l.trim_start().starts_with("```") {
+                match code.take() {
+                    Some(c) => out = out.child(self.code_block(c)),
+                    None => code = Some(String::new()),
+                }
+                continue;
+            }
+            if let Some(c) = &mut code {
+                c.push_str(l.strip_prefix("   ").unwrap_or(l));
+                c.push('\n');
+                continue;
+            }
+            let indent = ((l.len() - l.trim_start().len()) / 2).min(3) as f32 * 18.;
             if let Some(h) = l.strip_prefix("# ") {
                 out = out.child(
                     div()
@@ -484,20 +671,62 @@ impl VaultView {
                         .font_weight(FontWeight::MEDIUM)
                         .child(h.to_uppercase()),
                 );
-            } else if let Some(item) = l.trim_start().strip_prefix("- ") {
+            } else if let Some(h) = l.strip_prefix("### ") {
+                out = out.child(
+                    div()
+                        .mt(px(6.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(self.text(h, id, cx)),
+                );
+            } else if let Some((mark, item)) = list_item(l.trim_start()) {
                 out = out.child(
                     div()
                         .flex()
                         .gap(px(8.))
-                        .pl(px(6.))
-                        .child(div().flex_none().child("•"))
+                        .pl(px(6. + indent))
+                        .child(
+                            div()
+                                .flex_none()
+                                .min_w(px(12.))
+                                .text_color(t.muted)
+                                .font_family(t.mono.clone())
+                                .child(mark),
+                        )
                         .child(div().flex_1().min_w_0().child(self.text(item, id, cx))),
                 );
+            } else if let Some(q) = l.trim_start().strip_prefix('>') {
+                out = out.child(
+                    div()
+                        .my(px(4.))
+                        .pl(px(10.))
+                        .border_l_2()
+                        .border_color(t.comment)
+                        .text_color(t.muted)
+                        .child(self.text(q.trim_start(), id, cx)),
+                );
             } else if !l.trim().is_empty() {
-                out = out.child(self.text(l.trim(), id, cx));
+                out = out.child(div().pl(px(indent)).child(self.text(l.trim(), id, cx)));
             }
         }
+        if let Some(c) = code {
+            out = out.child(self.code_block(c));
+        }
         out
+    }
+
+    fn code_block(&self, code: String) -> Div {
+        let t = &self.theme;
+        div()
+            .ml(px(24.))
+            .mb(px(4.))
+            .px(px(10.))
+            .py(px(8.))
+            .rounded(px(5.))
+            .bg(t.panel)
+            .font_family(t.mono.clone())
+            .text_size(px(12.5))
+            .line_height(px(19.))
+            .child(code.trim_end().to_string())
     }
 
     fn card(&self) -> Div {
@@ -649,6 +878,17 @@ impl VaultView {
                             this.view = View::Log;
                             cx.notify();
                         })),
+                    )
+                    .child(
+                        feat(
+                            "v-new",
+                            "+",
+                            t.comment,
+                            "Nova nota",
+                            "notas/".into(),
+                            self.view == View::Note(NEW.into()),
+                        )
+                        .on_click(cx.listener(|this, _, w, cx| this.new_note(w, cx))),
                     ),
             );
         let notes: Vec<&Note> = self
@@ -657,6 +897,7 @@ impl VaultView {
             .filter(|n| q.is_empty() || n.name.to_lowercase().contains(&q))
             .collect();
         for (dir, label) in [
+            ("notas", "Notas"),
             ("repos", "Repos"),
             ("decisions", "Decisões"),
             ("daily", "Daily"),
@@ -918,7 +1159,6 @@ impl VaultView {
                     div()
                         .px(px(18.))
                         .py(px(14.))
-                        .max_w(px(900.))
                         .flex()
                         .flex_col()
                         .gap(px(12.))
@@ -975,42 +1215,22 @@ impl VaultView {
                 body = body.child(if is_daily {
                     self.daily(note, &key, cx)
                 } else if let Some(e) = self.editing.clone() {
-                    let k2 = key.clone();
-                    self.card()
-                        .child(
-                            div()
-                                .h(px(340.))
-                                .bg(t.win)
-                                .border_1()
-                                .border_color(t.line)
-                                .rounded(px(5.))
-                                .child(
-                                    Editor::new(&e)
-                                        .appearance(false)
-                                        .bordered(false)
-                                        .h_full()
-                                        .font_family(t.mono.clone())
-                                        .text_size(px(13.5)),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .gap(px(6.))
-                                .child(button(&t, "v-sv", "Salvar no vault", true).on_click(
-                                    cx.listener(move |this, _, _, cx| {
-                                        let Some(e) = this.editing.take() else { return };
-                                        let text = e.read(cx).value().to_string();
-                                        this.write(&k2, text, format!("{k2} editado por você"), cx);
-                                    }),
-                                ))
-                                .child(button(&t, "v-cn", "Cancelar", false).on_click(
-                                    cx.listener(|this, _, _, cx| {
-                                        this.editing = None;
-                                        cx.notify();
-                                    }),
-                                )),
-                        )
+                    self.card().child(
+                        div()
+                            .h(px(420.))
+                            .bg(t.win)
+                            .border_1()
+                            .border_color(t.line)
+                            .rounded(px(5.))
+                            .child(
+                                Editor::new(&e)
+                                    .appearance(false)
+                                    .bordered(false)
+                                    .h_full()
+                                    .font_family(t.mono.clone())
+                                    .text_size(px(13.5)),
+                            ),
+                    )
                 } else {
                     match note {
                         Some(n) => self
@@ -1081,7 +1301,35 @@ impl VaultView {
                                 self.link_list(bl, "v-bl", cx)
                             }),
                     );
-                let editable = note.is_some() && !is_daily && self.editing.is_none();
+                let editable = (note.is_some() || key == NEW) && !is_daily;
+                let editing = self.editing.is_some();
+                let busy = self.formatting.as_deref() == Some(key.as_str());
+                let status = if busy {
+                    "Claude formatando… (Haiku, sem ferramentas)"
+                } else if key == NEW {
+                    "título e Enter cria o arquivo"
+                } else if !editing {
+                    ""
+                } else if self
+                    .editing
+                    .as_ref()
+                    .is_some_and(|e| e.read(cx).value() != self.saved.as_str())
+                {
+                    "salvando…"
+                } else {
+                    "salvo"
+                };
+                let seg = |id: &'static str, label: &'static str, on: bool| {
+                    div()
+                        .id(id)
+                        .px(px(10.))
+                        .py(px(3.))
+                        .rounded(px(5.))
+                        .cursor_pointer()
+                        .text_color(if on { t.fg } else { t.muted })
+                        .when(on, |d| d.bg(t.accent_soft))
+                        .child(label)
+                };
                 let k3 = key.clone();
                 let n2 = name.clone();
                 let header = div()
@@ -1102,7 +1350,11 @@ impl VaultView {
                                 div()
                                     .text_size(px(16.))
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .child(name.clone()),
+                                    .child(if key == NEW {
+                                        "nova nota".to_string()
+                                    } else {
+                                        name.clone()
+                                    }),
                             )
                             .child(
                                 div()
@@ -1116,20 +1368,50 @@ impl VaultView {
                         div()
                             .flex()
                             .gap(px(6.))
-                            .child(div().flex_1())
-                            .child(button(&t, "v-g", "◎ Ver no grafo", false).on_click(
-                                cx.listener(move |this, _, _, cx| {
-                                    this.view = View::Graph;
-                                    let n = n2.clone();
-                                    this.graph.update(cx, |g, cx| g.highlight(n, cx));
-                                    this.refresh_graph(cx);
-                                    cx.notify();
-                                }),
-                            ))
+                            .items_center()
                             .when(editable, |d| {
-                                d.child(button(&t, "v-ed", "Editar", false).on_click(
-                                    cx.listener(move |this, _, w, cx| this.start_edit(&k3, w, cx)),
+                                d.child(seg("v-ed", "Editar", editing).on_click(cx.listener(
+                                    move |this, _, w, cx| {
+                                        if this.editing.is_none() {
+                                            this.start_edit(&k3, w, cx);
+                                        }
+                                    },
+                                )))
+                                .child(seg("v-ver", "Ver", !editing).on_click(cx.listener(
+                                    |this, _, _, cx| {
+                                        this.end_edit(cx);
+                                        cx.notify();
+                                    },
+                                )))
+                                .child(div().text_size(px(12.)).text_color(t.muted).child(status))
+                            })
+                            .child(div().flex_1())
+                            .when(key != NEW, |d| {
+                                d.child(button(&t, "v-g", "◎ Ver no grafo", false).on_click(
+                                    cx.listener(move |this, _, _, cx| {
+                                        this.view = View::Graph;
+                                        let n = n2.clone();
+                                        this.graph.update(cx, |g, cx| g.highlight(n, cx));
+                                        this.refresh_graph(cx);
+                                        cx.notify();
+                                    }),
                                 ))
+                            })
+                            .when(editable, |d| {
+                                d.child(
+                                    button(
+                                        &t,
+                                        "v-fmt",
+                                        if busy {
+                                            "Formatando…"
+                                        } else {
+                                            "✦ Formatar com IA"
+                                        },
+                                        true,
+                                    )
+                                    .when(busy, |d| d.opacity(0.45))
+                                    .on_click(cx.listener(|this, _, _, cx| this.format(cx))),
+                                )
                             }),
                     );
                 let _ = window;
@@ -1179,6 +1461,19 @@ impl Render for VaultView {
     }
 }
 
+/// `- x` → ("•", "x"); `12. x` → ("12.", "x").
+fn list_item(l: &str) -> Option<(String, &str)> {
+    if let Some(r) = l.strip_prefix("- ").or_else(|| l.strip_prefix("* ")) {
+        return Some(("•".into(), r));
+    }
+    let n = l.find(". ")?;
+    l[..n]
+        .chars()
+        .all(|c| c.is_ascii_digit())
+        .then(|| (format!("{}.", &l[..n]), &l[n + 2..]))
+        .filter(|_| n > 0)
+}
+
 /// Para o grafo: as features que existem, com a nota do repo de cada uma.
 pub fn features_from(
     inventories: &[crate::feature::Inventory],
@@ -1219,7 +1514,16 @@ pub fn features_from(
 
 #[cfg(test)]
 mod tests {
-    use super::{Span, inline};
+    use super::{Span, inline, list_item};
+
+    #[test]
+    fn item_de_lista() {
+        assert_eq!(list_item("- a"), Some(("•".into(), "a")));
+        assert_eq!(list_item("12. passo"), Some(("12.".into(), "passo")));
+        assert_eq!(list_item("v1. não"), None);
+        assert_eq!(list_item(". nada"), None);
+        assert_eq!(list_item("texto"), None);
+    }
 
     #[test]
     fn inline_do_vmd() {
