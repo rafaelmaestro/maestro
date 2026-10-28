@@ -1954,7 +1954,7 @@ function renderVaultTree(el){
 }
 function renderVaultMain(el){
   if(S.vview==='graph'){ el.innerHTML=`<div style="flex:1;min-height:0;padding:12px;display:grid">${graphCard(true)}</div>`; bindGraph(el); return; }
-  const wrap=h=>`<div class="diff" style="font-family:var(--sans);padding:14px 18px;display:grid;gap:12px;align-content:start;max-width:900px">${h}</div>`;
+  const wrap=h=>`<div class="diff" style="font-family:var(--sans);padding:14px 18px;display:grid;gap:12px;align-content:start">${h}</div>`;
   if(S.vview==='log'){ el.innerHTML=wrap(`<div class="card2"><h4>Atividade do vault</h4>${VLOG.length?`<div class="vlog">${VLOG.map(x=>`<div><span class="t">${x.t}</span><span>${esc(x.d)}</span></div>`).join('')}</div>`:'<p class="muted">Nada ainda.</p>'}
     <p class="muted">O Maestro escreve sozinho só o que o contrato do <span class="mono">vault/CLAUDE.md</span> permite: MR aberto ou mergeado → Histórico; gotcha de debug → <span class="mono">decisions/</span>; tarefa da daily concluída → [x]. Cada escrita aparece aqui e no toast, com desfazer.</p></div>`); bindVaultMain(el); return; }
   const k=S.vnote||'repos/bots-api.md', name=S.vnew?'nova nota':k.replace(/^.*\//,'').replace(/\.md$/,''), ed=S.vedit===k, bl=backLinks(name), ol=outLinks(k), busy=S.vfmt===k;
