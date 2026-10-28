@@ -344,10 +344,12 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 
 ## Notas
 
-- [x] Protótipo: modo Notas (Alt+7), lista de `notas/` do vault, editor livre que salva sozinho, Formatar com IA com Desfazer
-- [ ] `notes.rs`: listar `notas/`, nome do arquivo pelo `# título`, formatar com `claude -p` (haiku, sem ferramentas)
-- [ ] `NotesView`: lista, editor, salvar via `vault::write`, Formatar com IA em segundo plano
-- [ ] Ligar o modo: título, paleta, Alt+7, dicas, esconder lateral/terminal/revisão
+- [x] Protótipo: notas dentro do Vault (seção Notas, + Nova nota, Alt+7), Editar | Ver com o Markdown renderizado, salva sozinho, Formatar com IA com Desfazer
+- [ ] `notes.rs`: nome do arquivo pelo `# título`, formatar com `claude -p` (haiku, sem ferramentas)
+- [ ] Vault: seção Notas e + Nova nota (o arquivo nasce no Enter do título)
+- [ ] Vault: Editar | Ver em toda nota, salva sozinho, "editado por você" na Atividade ao sair da edição
+- [ ] Vault: Markdown com listas numeradas e aninhadas, blocos de código, citação e `###`
+- [ ] Vault: ✦ Formatar com IA (Ctrl+Shift+F) com Desfazer; Alt+7 abre uma nota nova
 - [ ] Teste no app (sessão `maestro-test`, vault temporário)
 
 ## Backlog (não entra sem decisão)
