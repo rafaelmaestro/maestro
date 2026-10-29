@@ -71,6 +71,7 @@ O dia a dia é o Claude Code no terminal. O editor serve para **revisar depois**
 - **Aprovar** e **Merge** com squash e opção de apagar a branch. O botão fica apagado, com o motivo, quando o GitLab não permite.
 - **Revisor Claude (`⇧R`):** os achados viram rascunhos que você edita ou descarta antes de publicar.
 - **Notificações:** MR novo para revisar ou resposta numa thread sua aparecem dentro do app e, com a janela fora de foco, no sistema.
+- **Vigia dos seus MRs:** todo MR seu de uma feature do Maestro (aberto pelo botão, pelo `/mr` ou por `glab mr create`, incluindo as fatias `<branch>-n`) é vigiado sozinho. Pipe que falha, thread nova e o revisor Claude, que roda uma vez depois do verde, vão ao Claude da feature, que delega a um agente em background por MR (`mr-<repo>-<iid>`). Esse agente corrige, faz push e responde na thread. Depois de 3 falhas seguidas do mesmo job, o vigia para e avisa. O Claude não recebe nada enquanto espera você responder uma pergunta ou permissão. Para o agente não parar em pedido de permissão, libere `Bash(git push:*)` e `Bash(glab api:*)` no `~/.claude/settings.json`.
 
 ### Perguntar ao Claude e comando por descrição
 
@@ -169,7 +170,7 @@ Variáveis de ambiente:
 | `MAESTRO_HERDR_SESSION` | sessão do herdr usada pelo terminal |
 | `MAESTRO_ASK_MODEL` | modelo do "Perguntar ao Claude" |
 | `MAESTRO_STATE` | arquivo de estado (tutoriais, Resumo do dia) |
-| `MAESTRO_FEATURES`, `MAESTRO_SEEN`, `MAESTRO_MR_NOTIFY` | inventário das features, shas revisados e estado das notificações |
+| `MAESTRO_FEATURES`, `MAESTRO_SEEN`, `MAESTRO_MR_NOTIFY`, `MAESTRO_MR_WATCH` | inventário das features, shas revisados, estado das notificações e do vigia de MRs |
 | `MAESTRO_NEWS_TOKEN`, `MAESTRO_NEWS_CACHE`, `MAESTRO_NEWS_IGNORE`, `MAESTRO_CURL` | token, cache e ocultos do News, e o `curl` usado por ele |
 
 As variáveis de caminho servem principalmente para rodar uma instância de teste isolada da sua.

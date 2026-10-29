@@ -81,6 +81,17 @@ pub struct Shell {
     /// o modo MRs (inbox, MR e revisor)
     mrs: Option<Entity<MrsView>>,
     in_mrs: bool,
+    /// o vigia dos seus MRs de features do Maestro
+    watch: crate::mr_watch::State,
+    /// achados do revisor que não chegaram ao Claude (ele estava esperando você): vão na próxima volta
+    watch_later: Vec<(
+        crate::mrs::Row,
+        std::path::PathBuf,
+        std::path::PathBuf,
+        crate::mr_watch::Ev,
+    )>,
+    /// panes do Claude (pela worktree) com um envio no ar: um prompt por vez, sem texto embaralhado
+    watch_busy: std::collections::HashSet<std::path::PathBuf>,
     /// o modo News (daily.dev); nasce com o app para a contagem e o Resumo do dia
     news: Entity<NewsView>,
     in_news: bool,
@@ -450,6 +461,9 @@ impl Shell {
             brief: false,
             mrs: None,
             in_mrs: false,
+            watch: crate::mr_watch::State::load(),
+            watch_later: Vec::new(),
+            watch_busy: Default::default(),
             audit: None,
             in_audit: false,
             want_audit: false,
@@ -1477,6 +1491,7 @@ impl Shell {
                 mrs_view::Event::Notify(text, key) => {
                     this.notify_mr(text.clone(), key.clone(), window, cx)
                 }
+                mrs_view::Event::Mine(me, rows) => this.watch_mrs(me.clone(), rows.clone(), cx),
             },
         )
         .detach();
@@ -1803,6 +1818,191 @@ impl Shell {
             let _ = this.update(cx, |this, cx| match r {
                 Ok(_) => this.toast(ok, cx),
                 Err(e) => this.toast(format!("O Claude não recebeu: {e}"), cx),
+            });
+        })
+        .detach();
+    }
+
+    /// O vigia: dos seus MRs abertos, os de features do Maestro; o que mudou vai ao Claude da feature.
+    fn watch_mrs(&mut self, me: String, rows: Vec<crate::mrs::Row>, cx: &mut Context<Self>) {
+        use crate::mr_watch;
+        self.watch
+            .keep(&rows.iter().map(crate::mrs::Row::key).collect::<Vec<_>>());
+        for (row, root, owner, ev) in std::mem::take(&mut self.watch_later) {
+            self.watch_send(row, root, owner, ev, cx);
+        }
+        cx.spawn(async move |this, cx| {
+            let owned = cx
+                .background_executor()
+                .spawn(async move { mr_watch::owners(&rows) })
+                .await;
+            let mut all_read = true;
+            let owned_keys: Vec<(String, std::path::PathBuf, u64)> = owned
+                .iter()
+                .map(|(r, _, owner)| (r.key(), owner.clone(), r.iid))
+                .collect();
+            for (row, root, owner) in owned {
+                let r = row.clone();
+                let Ok((detail, jobs, disc)) = cx
+                    .background_executor()
+                    .spawn(async move { mr_watch::fetch(&r) })
+                    .await
+                else {
+                    all_read = false;
+                    continue;
+                };
+                let alive = this.update(cx, |this, cx| {
+                    for ev in this.watch.events(&row.key(), &detail, &jobs, &disc, &me) {
+                        this.watch_send(row.clone(), root.clone(), owner.clone(), ev, cx);
+                    }
+                });
+                if alive.is_err() {
+                    return;
+                }
+            }
+            let _ = this.update(cx, |this, cx| {
+                // ponytail: um MR que não deu para ler na primeira volta ficaria sem base; espera a próxima
+                if all_read {
+                    this.watch.ready();
+                }
+                this.watch.save();
+                let gave: std::collections::HashMap<_, _> = owned_keys
+                    .iter()
+                    .filter(|(k, _, _)| this.watch.get(k).is_some_and(|w| w.gave_up))
+                    .map(|(_, owner, iid)| (owner.clone(), *iid))
+                    .collect();
+                if let Some(s) = this.sidebar.clone() {
+                    s.update(cx, |s, cx| {
+                        if s.gave_up != gave {
+                            s.gave_up = gave;
+                            cx.notify();
+                        }
+                    });
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn watch_send(
+        &mut self,
+        row: crate::mrs::Row,
+        root: std::path::PathBuf,
+        owner: std::path::PathBuf,
+        ev: crate::mr_watch::Ev,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::mr_watch::{self, Ev};
+        let key = row.key();
+        let name = format!("{} !{}", row.proj(), row.iid);
+        if let Ev::GaveUp { job, .. } = &ev {
+            self.watch.commit(&key, &ev);
+            self.watch.save();
+            return self.toast(
+                format!("Vigia parou de tentar o pipe de {name}: {job} falhou 3 vezes seguidas"),
+                cx,
+            );
+        }
+        let Some(s) = self.sidebar.clone() else {
+            return;
+        };
+        let agent = s
+            .read(cx)
+            .agents
+            .iter()
+            .find(|a| std::path::Path::new(&a.cwd).starts_with(&owner))
+            .map(|a| (a.pane_id.clone(), a.agent_status));
+        // sem Claude da feature, esperando você (pergunta, permissão) ou com outro envio no ar para o mesmo pane:
+        // nada é marcado e a próxima volta tenta de novo (achados, que não se recalculam, esperam em `watch_later`)
+        let ready = agent.filter(|a| a.1 != Status::Blocked);
+        let Some((pane, _)) = ready.filter(|_| !self.watch_busy.contains(&owner)) else {
+            if matches!(ev, Ev::Findings(_)) {
+                self.watch_later.push((row, root, owner, ev));
+            }
+            return;
+        };
+        if ev == Ev::Review {
+            self.watch.commit(&key, &ev);
+            self.watch.save();
+            self.toast(format!("Vigia: pipe verde em {name}, revisor rodando"), cx);
+            return cx
+                .spawn(async move |this, cx| {
+                    let r = row.clone();
+                    let res = cx
+                        .background_executor()
+                        .spawn(async move { mr_watch::review(&r) })
+                        .await;
+                    let _ = this.update(cx, |this, cx| match res {
+                        Ok((f, cost)) if f.is_empty() => {
+                            this.watch.commit(&key, &Ev::Findings(f));
+                            this.watch.save();
+                            this.toast(
+                                format!("Vigia: revisor sem achados em {name} (US$ {cost:.2})"),
+                                cx,
+                            );
+                        }
+                        Ok((f, _)) => this.watch_send(row, root, owner, Ev::Findings(f), cx),
+                        Err(e) => this.toast(format!("Vigia: o revisor falhou em {name}: {e}"), cx),
+                    });
+                })
+                .detach();
+        }
+        let Some(text) = mr_watch::prompt(&row, &ev) else {
+            return;
+        };
+        let text = review::for_repo(&text, &root, &owner);
+        let herdr = s.read(cx).herdr();
+        let what = match &ev {
+            Ev::Pipe { job, .. } => format!("corrigindo o pipe ({job})"),
+            Ev::Threads { list, .. } => format!(
+                "{} thread{} para responder",
+                list.len(),
+                if list.len() == 1 { "" } else { "s" }
+            ),
+            Ev::Findings(f) => format!(
+                "{} achado{} do revisor",
+                f.len(),
+                if f.len() == 1 { "" } else { "s" }
+            ),
+            _ => String::new(),
+        };
+        self.watch_busy.insert(owner.clone());
+        cx.spawn(async move |this, cx| {
+            let r = cx
+                .background_executor()
+                .spawn(async move {
+                    herdr.call(
+                        "agent.prompt",
+                        serde_json::json!({ "target": pane, "text": text }),
+                    )
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.watch_busy.remove(&owner);
+                match r {
+                    Ok(_) => {
+                        if let (Ev::Threads { list, .. }, Some(inv)) =
+                            (&ev, feature::find_by_path(&owner))
+                        {
+                            let sent = feature::state_lines(&inv.id, "sent");
+                            for t in list.iter().filter(|t| !sent.contains(&t.note.to_string())) {
+                                feature::add_state_line(&inv.id, "sent", &t.note.to_string());
+                            }
+                        }
+                        this.watch.commit(&key, &ev);
+                        this.watch.save();
+                        this.toast(
+                            format!("Vigia: {name} → {} · {what}", mr_watch::agent(&row)),
+                            cx,
+                        );
+                    }
+                    Err(e) => {
+                        if matches!(ev, Ev::Findings(_)) {
+                            this.watch_later.push((row, root, owner, ev));
+                        }
+                        this.toast(format!("Vigia: o Claude não recebeu ({name}): {e}"), cx)
+                    }
+                }
             });
         })
         .detach();

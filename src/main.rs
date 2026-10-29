@@ -25,6 +25,7 @@ mod mouse;
 mod mr;
 mod mr_notify;
 mod mr_tab;
+mod mr_watch;
 mod mrs;
 mod mrs_view;
 mod new_feature;

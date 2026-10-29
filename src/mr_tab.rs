@@ -27,6 +27,8 @@ pub struct MrTab {
     base: String,
     feature_id: Option<String>,
     pub fetch: Option<Fetch>,
+    /// o vigia deste MR (lido do estado que o shell grava)
+    watch: Option<crate::mr_watch::Watch>,
     checks: Option<Vec<Check>>,
     sent: HashSet<u64>,
     theme: Theme,
@@ -58,12 +60,36 @@ impl MrTab {
             let (root, branch) = (root.clone(), branch.clone());
             async move |this, cx| loop {
                 let (r, b) = (root.clone(), branch.clone());
-                let f = cx
+                let (f, w) = cx
                     .background_executor()
-                    .spawn(async move { mr::fetch(&r, &b) })
+                    .spawn(async move {
+                        let f = mr::fetch(&r, &b);
+                        let w = match &f {
+                            Fetch::Mr(m) => crate::mr_watch::State::key_of(&m.web_url, m.iid)
+                                .and_then(|k| crate::mr_watch::State::load().get(&k).cloned()),
+                            _ => None,
+                        };
+                        (f, w)
+                    })
                     .await;
                 if this
                     .update(cx, |this, cx| {
+                        // o vigia também manda comentário ao Claude: o que ele mandou fica "enviado ao Claude"
+                        if let Some(id) = &this.feature_id {
+                            let n = this.sent.len();
+                            this.sent.extend(
+                                feature::state_lines(id, "sent")
+                                    .iter()
+                                    .filter_map(|l| l.parse::<u64>().ok()),
+                            );
+                            if this.sent.len() != n {
+                                cx.notify();
+                            }
+                        }
+                        if this.watch != w {
+                            this.watch = w;
+                            cx.notify();
+                        }
                         if this.fetch.as_ref() != Some(&f) {
                             if let (Some(Fetch::NoMr), Fetch::Mr(m)) = (&this.fetch, &f) {
                                 cx.emit(Event::Opened(m.iid));
@@ -103,6 +129,7 @@ impl MrTab {
             root,
             branch,
             fetch: None,
+            watch: None,
             checks: None,
             sent,
             theme,
@@ -193,6 +220,72 @@ impl MrTab {
             .flex()
             .flex_col()
             .gap(px(6.))
+    }
+
+    /// O `watchCard` do protótipo: o vigia que manda pipe, threads e achados ao agente do MR.
+    fn watch_card(&self, m: &mr::Mr) -> Option<Div> {
+        let w = self.watch.as_ref().filter(|_| !m.merged && !m.closed)?;
+        let t = &self.theme;
+        let proj = crate::mr_watch::State::key_of(&m.web_url, m.iid)?
+            .rsplit_once('!')?
+            .0
+            .rsplit('/')
+            .next()?
+            .to_string();
+        let (pipe, pc) = match m.pipe {
+            Status::Ok => ("pipe ✓", t.ok),
+            Status::Fail => ("pipe ✗", red()),
+            Status::Running => ("pipe ⟳", yellow()),
+            Status::None => ("sem pipe", t.muted),
+        };
+        let rev = match (w.reviewed, w.found) {
+            (false, _) => "revisão espera o verde".to_string(),
+            (true, None) => "revisando ⟳".to_string(),
+            (true, Some(0)) => "revisão sem achados".to_string(),
+            (true, Some(n)) => format!(
+                "revisão: {n} achado{} enviado{}",
+                if n > 1 { "s" } else { "" },
+                if n > 1 { "s" } else { "" }
+            ),
+        };
+        let s = if w.threads.len() == 1 { "" } else { "s" };
+        Some(
+            self.card()
+                .child(
+                    self.h4("")
+                        .child(if w.gave_up {
+                            div().text_color(red()).child("VIGIA PARADO")
+                        } else {
+                            div().flex().gap(px(6.)).child(div().text_color(t.ok).child("◉")).child("CLAUDE VIGIANDO")
+                        })
+                        .child(div().flex_1())
+                        .child(div().font_family(t.mono.clone()).child(format!("agente mr-{proj}-{}", m.iid))),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(4.))
+                        .child(div().text_color(pc).child(pipe))
+                        .child(format!("· {} thread{s} respondida{s} · {rev}", w.threads.len())),
+                )
+                .when(!w.log.is_empty(), |d| {
+                    d.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .font_family(t.mono.clone())
+                            .text_size(px(12.))
+                            .text_color(t.muted)
+                            .children(w.log.iter().map(|l| div().child(l.clone()))),
+                    )
+                })
+                .child(div().text_size(px(12.)).text_color(if w.gave_up { red() } else { t.muted }).child(if w.gave_up {
+                    "O mesmo job falhou 3 vezes seguidas: parei de mandar ao Claude. O botão do /pipe continua aí."
+                } else {
+                    "Pipe que falha, thread nova e a revisão depois do verde vão sozinhos ao Claude, que corrige, faz push e responde na thread sem pedir confirmação."
+                })),
+        )
     }
 
     fn h4(&self, title: impl Into<SharedString>) -> Div {
@@ -433,6 +526,7 @@ impl MrTab {
                     })
                     .when(m.closed, |d| d.child(div().text_color(t.muted).child("Fechado sem merge."))),
             )
+            .children(self.watch_card(m))
             .child(
                 self.card()
                     .child(self.h4("Pipeline"))
