@@ -2118,11 +2118,27 @@ function renderMRTab(f){
   const pend=m.comments.filter(c=>!c.sent);
   return `<div class="diff" style="font-family:var(--sans);padding:12px;display:grid;gap:12px;align-content:start">
     <div class="card2"><h4>!${m.iid} · ${esc(f.branch)} → main<span class="sp"></span><button class="btn" id="mrWeb">Abrir no GitLab</button></h4>${m.merged?'<p class="okc2">Mergeado. Histórico do vault atualizado.</p>':''}</div>
+    ${watchCard(m)}
     <div class="card2"><h4>Pipeline</h4><p class="${m.pipe==='success'?'okc2':m.pipe==='failed'?'badc2':'runc2'}">${m.pipe==='success'?'✓ passou':m.pipe==='failed'?`✗ falhou no job <span class="mono">${m.job}</span>`:'⟳ rodando'}</p>${m.pipe==='failed'?`<div class="acts"><button class="btn pri" id="mrPipe">Diagnosticar com /pipe</button><span class="muted">o Claude lê o log do job; nada é alterado sem você</span></div>`:''}</div>
     <div class="card2"><h4>Sonar · quality gate</h4><p class="${m.sonar==='ok'?'okc2':m.sonar==='fail'?'badc2':'runc2'}">${m.sonar==='ok'?'✓ passou':m.sonar==='fail'?'✗ '+esc(m.sonarMsg):'⟳ aguardando análise'}</p>${m.sonar==='fail'?'<div class="acts"><button class="btn" id="mrSonar">Pedir ao Claude para cobrir</button></div>':''}</div>
     <div class="card2"><h4>Comentários de revisores<span class="sp"></span>${pend.length?`<button class="btn pri" id="mrCom">Mandar ${pend.length} pro Claude (/comentario)</button>`:''}</h4>${m.comments.length?m.comments.map(c=>`<div class="thr ${c.sent?'sent':''}" style="margin:0;max-width:none"><div class="th"><b>${c.who}</b><span class="mono">${c.where}</span><span class="sp"></span>${c.sent?'enviado ao Claude':''}</div><div class="bd"><p>${md(c.body)}</p></div></div>`).join(''):'<p class="muted">Nenhum ainda.</p>'}</div>
     ${m.merged?`<div class="acts"><button class="btn danger" id="mrRm">Remover worktree</button></div>`:`<div class="acts"><button class="btn" id="mrMerge">Simular merge</button><span class="muted">protótipo: no app isso vem do GitLab</span></div>`}</div>`;
 }
+/* vigia: o Maestro olha o GitLab e manda ao agente mr-<repo>-<iid> do Claude da feature */
+function watchCard(m){ const w=m.watch; if(!w||m.merged) return '';
+  const pipe=m.pipe==='success'?'<span style="color:var(--ok)">pipe ✓</span>':m.pipe==='failed'?'<span style="color:var(--bad)">pipe ✗</span>':'<span style="color:var(--yellow)">pipe ⟳</span>';
+  const rev=w.review==='wait'?'revisão espera o verde':w.review==='run'?'<span style="color:var(--yellow)">revisando ⟳</span>':w.review===0?'revisão sem achados':`revisão: ${w.review} achado${w.review>1?'s':''} enviado${w.review>1?'s':''}`;
+  return `<div class="card2"><h4>${w.gaveUp?'<span style="color:var(--bad)">Vigia parado</span>':'<span style="color:var(--ok)">◉</span> Claude vigiando'}<span class="sp"></span><span class="mono muted" style="letter-spacing:0;text-transform:none">agente mr-bots-api-${m.iid}</span></h4>
+    <p>${pipe} · ${w.threads} thread${w.threads===1?'':'s'} respondida${w.threads===1?'':'s'} · ${rev}</p>
+    ${w.log.length?`<div class="mono muted" style="font-size:12px;display:grid;gap:2px">${w.log.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`:''}
+    ${w.gaveUp?`<p class="badc2">O job ${esc(m.job)} falhou 3 vezes seguidas: parei de mandar ao Claude. O botão do /pipe continua aí.</p>`:'<p class="muted" style="font-size:12px">Pipe que falha, thread nova e a revisão depois do verde vão sozinhos ao Claude, que corrige, faz push e responde na thread sem pedir confirmação.</p>'}</div>`; }
+function watchSim(f){ const m=f.mr, w=m.watch={threads:0,review:'wait',gaveUp:false,log:[]}, lg=t=>{ w.log.push(t); renderRight(); renderLeft(); };
+  const later=(ms,fn)=>setTimeout(()=>{ if(f.mr===m&&!m.merged) fn(); },ms);
+  later(3000,()=>{ m.pipe='failed'; m.job='test:unit'; lg(`pipe falhou em test:unit → enviado ao agente mr-bots-api-${m.iid}`); f.tab=0; push(f,'u',`> Vigia do MR !${m.iid}: delegue ao subagente mr-bots-api-${m.iid} · pipe falhou no job test:unit (…/jobs/91822041)`); setSt(f,'working','vigia: corrigindo o pipe'); f.verb='Corrigindo';
+    run(f,[[700,'dot',`⏺ Agent(mr-bots-api-${m.iid}) em background`],[900,'out','  ⎿  --testPathPattern → --testPathPatterns · commit · push']],()=>{ setSt(f,'done','pipe corrigido, rodando de novo'); m.pipe='running'; lg('correção no push: pipe rodando de novo'); }); });
+  later(7000,()=>{ m.pipe='success'; m.sonar='ok'; w.review='run'; lg('pipe verde → revisor rodando no MR'); });
+  later(9500,()=>{ w.review=2; lg(`revisor: 2 achados → enviados ao agente mr-bots-api-${m.iid}`); push(f,'dot',`⏺ Agent(mr-bots-api-${m.iid}): 2 achados do revisor corrigidos · push`); });
+  later(12500,()=>{ m.comments.push({who:'@ana.lima',where:'src/slack.ts:14',body:'Esse timeout não devia vir do env?',sent:true}); w.threads=1; lg('thread nova de @ana.lima → corrigida e respondida na thread'); push(f,'dot',`⏺ Agent(mr-bots-api-${m.iid}): SLACK_TIMEOUT_MS no env · respondido na thread de @ana.lima`); }); }
 const SUBTYPES=['Desenvolvimento','Subtarefa','Qualidade e Testes'];
 const FLOW={'Desenvolvimento':['To-do','Building','Code Review','Pull Request','Waiting Test','Ready to Test','Ready for Release','Concluído'],'Subtarefa':['To-do','Building','Concluído'],'Qualidade e Testes':['Tarefas pendentes','Em andamento','Teste','Archived']};
 const firstSt=t=>(FLOW[t]||FLOW.Desenvolvimento)[0];
@@ -2211,9 +2227,8 @@ function bindMRTab(el,f){
   b('pfOver',()=>{ S.pf[f.id]=null; openMrNow(f); });
 }
 function openMrNow(f){ { f.tab=0; push(f,'u','> /mr'); setSt(f,'working','abrindo MR'); f.verb='Commitando';
-    run(f,[[800,'dot','⏺ Skill(mr)'],[900,'out','  ⎿  commit "feat: healthcheck com checagem do banco" · push origin '+f.branch],[900,'out','  ⎿  MR !149 aberto em draft']],()=>{ f.mr={iid:149,pipe:'running',sonar:'pending',comments:[]}; setSt(f,'done','MR !149 aberto'); subsToPR(f,REPO,149); renderRight();
-      vlog('repos/bots-api.md · Histórico: MR !149 aberto',null);
-      setTimeout(()=>{ f.mr.pipe='success'; f.mr.sonar='ok'; renderLeft(); renderRight(); renderFrame(); },5000); }); renderRight(); } }
+    run(f,[[800,'dot','⏺ Skill(mr)'],[900,'out','  ⎿  commit "feat: healthcheck com checagem do banco" · push origin '+f.branch],[900,'out','  ⎿  MR !149 aberto em draft']],()=>{ f.mr={iid:149,pipe:'running',sonar:'pending',comments:[]}; setSt(f,'done','MR !149 aberto'); subsToPR(f,REPO,149); watchSim(f); renderRight();
+      vlog('repos/bots-api.md · Histórico: MR !149 aberto',null); }); renderRight(); } }
 function bindMRTab2(el,f){
   const b=(id,fn)=>{ const e=el.querySelector('#'+id); if(e) e.onclick=fn; };
   b('mrWeb',()=>toast(`Abriria gitlab.com/ctbz/experts/bots/bots-api/-/merge_requests/${f.mr.iid}`));
@@ -2287,6 +2302,7 @@ function attention(){
   FEATS.forEach(f=>{ if(f.kind==='ws') return;
     if(f.st==='blocked') q.push({p:0,tag:'permissão',t:`${f.branch}: ${f.msg}`,run:go(f.id)});
     if(f.mr&&f.mr.pipe==='failed'&&!f.mr.merged) q.push({p:1,tag:'CI',t:`CI falhou em !${f.mr.iid} (${f.branch})`,run:go(f.id,'mr')});
+    if(f.mr&&f.mr.watch&&f.mr.watch.gaveUp&&!f.mr.merged) q.push({p:1,tag:'vigia',t:`Vigia parou de tentar o pipe de !${f.mr.iid} (3 falhas seguidas)`,run:go(f.id,'mr')});
     if(f.mr&&f.mr.sonar==='fail'&&!f.mr.merged) q.push({p:1,tag:'Sonar',t:`Quality gate reprovado em !${f.mr.iid}`,run:go(f.id,'mr')});
     const pc=f.mr?f.mr.comments.filter(c=>!c.sent).length:0; if(pc) q.push({p:2,tag:'MR',t:`${pc} comentário${pc>1?'s':''} novo${pc>1?'s':''} em !${f.mr.iid}`,run:go(f.id,'mr')});
     if(f.st==='done'&&f.unseen) q.push({p:2,tag:'revisar',t:`${f.branch} pronta pra revisar`,run:go(f.id,'review')});
