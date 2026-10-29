@@ -30,6 +30,8 @@ pub enum Event {
     Notify(String, String),
     /// "?" num bloco: a gaveta "Perguntar ao Claude"
     AskClaude(crate::ask::Ctx),
+    /// seus MRs abertos, a cada volta do polling: o vigia do shell decide o que mandar ao Claude
+    Mine(String, Vec<Row>),
 }
 
 #[derive(Clone, Copy)]
@@ -313,6 +315,7 @@ impl MrsView {
                 }
             }
             let fresh_review = lists[0].as_ref().ok().cloned();
+            let mine = lists[1].as_ref().ok().cloned();
             let _ = this.update(cx, |this, cx| {
                 this.me = me;
                 this.seen = std::fs::read_to_string(mrs::seen_file()).unwrap_or_default();
@@ -320,6 +323,9 @@ impl MrsView {
                 if let Some(v) = fresh_review {
                     let n = this.notify.new_mrs(&v);
                     this.announce(n, cx);
+                }
+                if let (Some(v), false) = (mine, me_name.is_empty()) {
+                    cx.emit(Event::Mine(me_name.clone(), v));
                 }
                 cx.notify();
             });

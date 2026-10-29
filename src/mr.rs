@@ -86,7 +86,7 @@ pub fn failed_job(jobs: &Value) -> Option<(String, String)> {
 }
 
 /// GitLab Duo e os bots de grupo/projeto (`group_…_bot_…`, como o da "Revisão automática").
-fn is_bot(user: &str) -> bool {
+pub fn is_bot(user: &str) -> bool {
     user == "GitLabDuo"
         || ((user.starts_with("group_") || user.starts_with("project_")) && user.contains("_bot_"))
 }
