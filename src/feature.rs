@@ -550,12 +550,13 @@ fn feature_context(inv: &Inventory) -> Option<String> {
             list.join("\n")
         ));
     }
-    if let Some(p) = &inv.parent {
-        out.push(format!(
+    out.push(match &inv.parent {
+        Some(p) => format!(
             "Esta feature está empilhada em {0}: o MR dela deve apontar (target branch) para {0}, não para {1}.",
             p.branch, p.base
-        ));
-    }
+        ),
+        None => format!("O MR desta feature aponta (target branch) para {}.", inv.base),
+    });
     (!out.is_empty()).then(|| out.join("\n\n"))
 }
 
@@ -1833,5 +1834,25 @@ mod tests {
                 .all(|x| !x.safe())
         );
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn contexto_sempre_diz_o_alvo_do_mr() {
+        let inv = Inventory {
+            id: "x".into(),
+            repo: "/r/app".into(),
+            branch: "feat/x".into(),
+            base: "develop".into(),
+            worktrees: vec![],
+            port: 3001,
+            compose_project: "app-feat-x".into(),
+            workspace_id: None,
+            group: None,
+            model: None,
+            created_at: 0,
+            parent: None,
+            jira: None,
+        };
+        assert!(feature_context(&inv).unwrap().contains("para develop."));
     }
 }
