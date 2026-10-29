@@ -360,7 +360,7 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] `MrsView::refresh` emite seus MRs abertos; o vigia roda o revisor (`mrs::review`) uma vez por MR depois do verde
 - [x] Shell: MR → worktree da feature (inclui fatias `<branch>-n`), não digita com o agente em Blocked, commit só depois que o Claude recebeu
 - [x] Aba MR: linha de status do vigia
-- [ ] Permissões: `git push` e `glab api` liberados para os agentes em background — anotado no README; o settings não tem essas regras e só muda com o seu ok
+- [x] Permissões: `Bash(git push:*)` e `Bash(glab api:*)` liberados no `~/.claude/settings.json` para os agentes em background (e anotado no README)
 - [x] Teste no app (sessão `maestro-test`, glab falso, claude → cat): pipe, revisor depois do verde, threads, Blocked segura, 2 MRs da mesma worktree um por vez, desistência na Fila
 - Desvios: o artifact do protótipo não foi republicado (o local tem o card e o fluxo simulado); o revisor usa a mesma rubrica do "Revisão Claude", escrita para MR de outra pessoa; o nome do agente (`description` no Agent, reaproveitado via ListAgents/SendMessage) só foi testado com um `cat` no lugar do Claude
 
