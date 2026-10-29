@@ -156,6 +156,8 @@ pub struct Sidebar {
     learned: HashSet<(PathBuf, String)>,
     /// comentários já mandados ao Claude, por worktree (`<id>.sent`)
     sent: HashMap<PathBuf, HashSet<u64>>,
+    /// worktree do Claude → MR em que o vigia desistiu do pipe (o shell atualiza a cada volta)
+    pub gave_up: HashMap<PathBuf, u64>,
     /// o pedido de permissão de cada pane bloqueado ("pediu permissão: npm test")
     asks: HashMap<String, String>,
     /// o card "Auditoria": (rodando, k, m, aberta, pronta e não vista)
@@ -502,6 +504,7 @@ impl Sidebar {
             mrs: HashMap::new(),
             learned: HashSet::new(),
             sent: HashMap::new(),
+            gave_up: HashMap::new(),
             asks: HashMap::new(),
             audit: (false, String::new(), "nunca rodou".into(), false, false),
             focused_cwd: None,
@@ -1276,6 +1279,14 @@ impl Sidebar {
                         1,
                         "CI",
                         format!("CI falhou em !{} ({})", m.iid, branch()),
+                        go.clone(),
+                    ));
+                }
+                if let Some(iid) = self.gave_up.get(&wt) {
+                    q.push(item(
+                        1,
+                        "vigia",
+                        format!("Vigia parou de tentar o pipe de !{iid} (3 falhas seguidas)"),
                         go.clone(),
                     ));
                 }
