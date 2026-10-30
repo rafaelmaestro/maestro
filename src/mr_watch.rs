@@ -21,6 +21,9 @@ pub struct State {
     /// a primeira leitura só grava a base: o que já existia não dispara
     init: bool,
     mrs: BTreeMap<String, Watch>,
+    /// MR fora de feature → cwd do Claude solto que o abriu
+    #[serde(default)]
+    pub panes: BTreeMap<String, PathBuf>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
@@ -268,6 +271,7 @@ impl State {
     /// MR que saiu da lista de abertos (mergeado ou fechado) não precisa mais de estado.
     pub fn keep(&mut self, open: &[String]) {
         self.mrs.retain(|k, _| open.contains(k));
+        self.panes.retain(|k, _| open.contains(k));
     }
 }
 
@@ -380,6 +384,75 @@ pub fn owns(branch: &str, source: &str) -> bool {
             .strip_prefix(branch)
             .and_then(|r| r.strip_prefix('-'))
             .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// O Claude solto (fora de feature) que abriu cada MR: o transcript onde um `glab mr create` devolveu o link.
+/// Lê `~/.claude/projects/<cwd>`, porque o Claude em tela cheia não deixa o link no scrollback.
+pub fn openers(rows: &[Row], cwds: &[PathBuf]) -> Vec<(String, PathBuf)> {
+    let projects =
+        PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".claude/projects");
+    let mut out: Vec<(String, PathBuf)> = Vec::new();
+    for cwd in cwds {
+        let dir: String = cwd
+            .to_string_lossy()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect();
+        let files = std::fs::read_dir(projects.join(dir))
+            .into_iter()
+            .flatten()
+            .flatten();
+        for f in files.filter(|e| e.path().extension().is_some_and(|x| x == "jsonl")) {
+            let Ok(t) = std::fs::read_to_string(f.path()) else {
+                continue;
+            };
+            for r in rows {
+                if !out.iter().any(|(k, _)| *k == r.key()) && created(&t, &r.web_url) {
+                    out.push((r.key(), cwd.clone()));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// O transcript tem um `glab mr create` cujo resultado traz o link (citar o link não basta: colar o MR noutra sessão não a faz dona).
+fn created(transcript: &str, url: &str) -> bool {
+    if !transcript.contains("mr create") || !cites(transcript, url) {
+        return false;
+    }
+    let items = |l: &str| -> Vec<Value> {
+        serde_json::from_str::<Value>(l)
+            .ok()
+            .and_then(|v| v["message"]["content"].as_array().cloned())
+            .unwrap_or_default()
+    };
+    let calls: Vec<String> = transcript
+        .lines()
+        .filter(|l| l.contains("mr create"))
+        .flat_map(items)
+        .filter(|c| {
+            c["input"]["command"]
+                .as_str()
+                .is_some_and(|c| c.contains("glab mr create"))
+        })
+        .filter_map(|c| c["id"].as_str().map(String::from))
+        .collect();
+    transcript
+        .lines()
+        .filter(|l| cites(l, url))
+        .flat_map(items)
+        .any(|c| {
+            c["tool_use_id"]
+                .as_str()
+                .is_some_and(|id| calls.iter().any(|x| x == id))
+                && cites(&c["content"].to_string(), url)
+        })
+}
+
+fn cites(text: &str, url: &str) -> bool {
+    text.match_indices(url)
+        .any(|(i, _)| !text[i + url.len()..].starts_with(|c: char| c.is_ascii_digit()))
 }
 
 /// (worktree do MR, worktree do Claude da feature) de cada MR seu que é de uma feature do Maestro.
@@ -552,6 +625,24 @@ mod tests {
             );
         }
         assert_eq!(s.get("k").unwrap().log.len(), 6);
+    }
+
+    #[test]
+    fn dono_e_quem_rodou_o_mr_create_nao_quem_citou() {
+        let u = "https://gitlab.com/g/p/-/merge_requests/31";
+        let call = json!({"message": {"content": [{"type": "tool_use", "id": "t1", "input": {"command": "git push && glab mr create --draft --yes"}}]}});
+        let res = json!({"message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": format!("{u}\n")}]}});
+        let cited = json!({"message": {"content": [{"type": "text", "text": format!("olha o {u} (glab mr create)")}]}});
+        assert!(created(&format!("{call}\n{res}"), u));
+        assert!(!created(&cited.to_string(), u));
+        assert!(!created(&format!("{call}\n{cited}"), u));
+    }
+
+    #[test]
+    fn link_do_mr_nao_casa_com_iid_maior() {
+        let u = "https://gitlab.com/g/p/-/merge_requests/31";
+        assert!(cites("abri https://gitlab.com/g/p/-/merge_requests/31)", u));
+        assert!(!cites("https://gitlab.com/g/p/-/merge_requests/316", u));
     }
 
     #[test]
