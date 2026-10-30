@@ -84,6 +84,7 @@ pub struct Shell {
     /// o vigia dos seus MRs de features do Maestro
     watch: crate::mr_watch::State,
     /// achados do revisor que não chegaram ao Claude (ele estava esperando você): vão na próxima volta
+    watch_searched: std::collections::HashSet<String>,
     watch_later: Vec<(
         crate::mrs::Row,
         std::path::PathBuf,
@@ -462,6 +463,7 @@ impl Shell {
             mrs: None,
             in_mrs: false,
             watch: crate::mr_watch::State::load(),
+            watch_searched: std::collections::HashSet::new(),
             watch_later: Vec::new(),
             watch_busy: Default::default(),
             audit: None,
@@ -1831,11 +1833,48 @@ impl Shell {
         for (row, root, owner, ev) in std::mem::take(&mut self.watch_later) {
             self.watch_send(row, root, owner, ev, cx);
         }
+        let cwds: Vec<std::path::PathBuf> = self
+            .sidebar
+            .as_ref()
+            .map(|s| {
+                s.read(cx)
+                    .agents
+                    .iter()
+                    .map(|a| a.cwd.clone().into())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let known = self.watch.panes.clone();
+        // ponytail: cada MR sem dono procura nos transcripts uma vez por execução; Claude que abrir depois não é achado até reiniciar
+        let search: Vec<crate::mrs::Row> = rows
+            .iter()
+            .filter(|r| !known.contains_key(&r.key()) && self.watch_searched.insert(r.key()))
+            .cloned()
+            .collect();
         cx.spawn(async move |this, cx| {
-            let owned = cx
+            let (owned, found) = cx
                 .background_executor()
-                .spawn(async move { mr_watch::owners(&rows) })
+                .spawn(async move {
+                    let mut owned = mr_watch::owners(&rows);
+                    let free: Vec<_> = search
+                        .into_iter()
+                        .filter(|r| !owned.iter().any(|(o, _, _)| o.key() == r.key()))
+                        .collect();
+                    let found = mr_watch::openers(&free, &cwds);
+                    for r in &rows {
+                        let cwd = known
+                            .get(&r.key())
+                            .or_else(|| found.iter().find(|(k, _)| *k == r.key()).map(|(_, c)| c));
+                        if let Some(c) =
+                            cwd.filter(|_| !owned.iter().any(|(o, _, _)| o.key() == r.key()))
+                        {
+                            owned.push((r.clone(), c.clone(), c.clone()));
+                        }
+                    }
+                    (owned, found)
+                })
                 .await;
+            let _ = this.update(cx, |this, _| this.watch.panes.extend(found));
             let mut all_read = true;
             let owned_keys: Vec<(String, std::path::PathBuf, u64)> = owned
                 .iter()
