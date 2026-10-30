@@ -363,6 +363,7 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] Permissões: `Bash(git push:*)` e `Bash(glab api:*)` liberados no `~/.claude/settings.json` para os agentes em background (e anotado no README)
 - [x] Teste no app (sessão `maestro-test`, glab falso, claude → cat): pipe, revisor depois do verde, threads, Blocked segura, 2 MRs da mesma worktree um por vez, desistência na Fila
 - [x] MR aberto por Claude solto (fora de feature): o vigia acha a sessão pelo `glab mr create` no transcript e manda para aquele pane
+- [x] Fim do ciclo tira o MR do draft: revisor sem achados → o Maestro tira; com achados → o agente tira depois de corrigir com o pipe verde
 - Desvios: o artifact do protótipo não foi republicado (o local tem o card e o fluxo simulado); o revisor usa a mesma rubrica do "Revisão Claude", escrita para MR de outra pessoa; o nome do agente (`description` no Agent, reaproveitado via ListAgents/SendMessage) só foi testado com um `cat` no lugar do Claude
 
 ## Backlog (não entra sem decisão)

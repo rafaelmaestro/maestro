@@ -298,6 +298,28 @@ pub fn fetch(row: &Row) -> Result<(Value, Value, Value), String> {
 }
 
 /// O revisor de MR (o mesmo da gaveta "Revisão Claude") rodando no seu próprio MR. Bloqueia por minutos.
+/// Tira o MR do draft (o `Draft:` do título), para os revisores de IA rodarem e o time ser avisado.
+pub fn undraft(row: &Row) -> Result<bool, String> {
+    let title = undrafted(&row.title);
+    if title == row.title {
+        return Ok(false);
+    }
+    let at = format!(
+        "projects/{}/merge_requests/{}",
+        crate::mrs::enc(&row.path),
+        row.iid
+    );
+    crate::mrs::write("PUT", &at, &serde_json::json!({ "title": title })).map(|_| true)
+}
+
+fn undrafted(title: &str) -> String {
+    let t = title.trim_start();
+    ["Draft:", "[Draft]", "(Draft)"]
+        .iter()
+        .find_map(|p| t.strip_prefix(p))
+        .map_or_else(|| title.to_string(), |r| r.trim_start().to_string())
+}
+
 pub fn review(row: &Row) -> Result<(Vec<Finding>, f64), String> {
     let base = format!(
         "projects/{}/merge_requests/{}",
@@ -361,7 +383,9 @@ pub fn prompt(row: &Row, ev: &Ev) -> Option<String> {
                 })
                 .collect();
             format!(
-                "O revisor de MR do Maestro achou isto no próprio MR. Corrija o que procede; o que não procede, ignore e diga por quê na sua resposta final (não comente no MR).\n\n{}",
+                "O revisor de MR do Maestro achou isto no próprio MR. Corrija o que procede; o que não procede, ignore e diga por quê na sua resposta final (não comente no MR). No fim, com o pipe verde depois do seu push (ou se nada procedeu), tire o MR do draft: `glab mr update {} --ready -R {}`.\n\n{}",
+                row.iid,
+                row.path,
                 list.join("\n")
             )
         }
@@ -636,6 +660,14 @@ mod tests {
         assert!(created(&format!("{call}\n{res}"), u));
         assert!(!created(&cited.to_string(), u));
         assert!(!created(&format!("{call}\n{cited}"), u));
+    }
+
+    #[test]
+    fn tira_so_o_prefixo_de_draft() {
+        assert_eq!(undrafted("Draft: feat/x"), "feat/x");
+        assert_eq!(undrafted("[Draft] feat/x"), "feat/x");
+        assert_eq!(undrafted("feat/x"), "feat/x");
+        assert_eq!(undrafted("Drafts de nota"), "Drafts de nota");
     }
 
     #[test]
