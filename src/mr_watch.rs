@@ -383,9 +383,7 @@ pub fn prompt(row: &Row, ev: &Ev) -> Option<String> {
                 })
                 .collect();
             format!(
-                "O revisor de MR do Maestro achou isto no próprio MR. Corrija o que procede; o que não procede, ignore e diga por quê na sua resposta final (não comente no MR). No fim, com o pipe verde depois do seu push (ou se nada procedeu), tire o MR do draft: `glab mr update {} --ready -R {}`.\n\n{}",
-                row.iid,
-                row.path,
+                "O revisor de MR do Maestro achou isto no próprio MR. Corrija o que procede; o que não procede, ignore e diga por quê na sua resposta final (não comente no MR).\n\n{}",
                 list.join("\n")
             )
         }
