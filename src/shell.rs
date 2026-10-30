@@ -1976,9 +1976,21 @@ impl Shell {
                             this.watch.commit(&key, &Ev::Findings(f));
                             this.watch.save();
                             this.toast(
-                                format!("Vigia: revisor sem achados em {name} (US$ {cost:.2})"),
+                                format!("Vigia: revisor sem achados em {name} (US$ {cost:.2}), tirando do draft"),
                                 cx,
                             );
+                            cx.spawn(async move |this, cx| {
+                                let r = cx
+                                    .background_executor()
+                                    .spawn(async move { mr_watch::undraft(&row) })
+                                    .await;
+                                if let Err(e) = r {
+                                    let _ = this.update(cx, |this, cx| {
+                                        this.toast(format!("Vigia: não tirei {name} do draft: {e}"), cx)
+                                    });
+                                }
+                            })
+                            .detach();
                         }
                         Ok((f, _)) => this.watch_send(row, root, owner, Ev::Findings(f), cx),
                         Err(e) => this.toast(format!("Vigia: o revisor falhou em {name}: {e}"), cx),
