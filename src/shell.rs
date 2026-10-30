@@ -1890,6 +1890,22 @@ impl Shell {
                     all_read = false;
                     continue;
                 };
+                // os bots de IA e o aviso ao time só vêm com o MR fora do draft; pipe verde basta
+                if detail["draft"] == true && crate::mrs::ci_of(&detail) == crate::mr::Status::Ok {
+                    let r = row.clone();
+                    let res = cx
+                        .background_executor()
+                        .spawn(async move { mr_watch::undraft(&r) })
+                        .await;
+                    let name = format!("{} !{}", row.proj(), row.iid);
+                    let _ = this.update(cx, |this, cx| match res {
+                        Ok(true) => {
+                            this.toast(format!("Vigia: pipe verde, {name} saiu do draft"), cx)
+                        }
+                        Ok(false) => {}
+                        Err(e) => this.toast(format!("Vigia: não tirei {name} do draft: {e}"), cx),
+                    });
+                }
                 let alive = this.update(cx, |this, cx| {
                     for ev in this.watch.events(&row.key(), &detail, &jobs, &disc, &me) {
                         this.watch_send(row.clone(), root.clone(), owner.clone(), ev, cx);
@@ -1976,21 +1992,9 @@ impl Shell {
                             this.watch.commit(&key, &Ev::Findings(f));
                             this.watch.save();
                             this.toast(
-                                format!("Vigia: revisor sem achados em {name} (US$ {cost:.2}), tirando do draft"),
+                                format!("Vigia: revisor sem achados em {name} (US$ {cost:.2})"),
                                 cx,
                             );
-                            cx.spawn(async move |this, cx| {
-                                let r = cx
-                                    .background_executor()
-                                    .spawn(async move { mr_watch::undraft(&row) })
-                                    .await;
-                                if let Err(e) = r {
-                                    let _ = this.update(cx, |this, cx| {
-                                        this.toast(format!("Vigia: não tirei {name} do draft: {e}"), cx)
-                                    });
-                                }
-                            })
-                            .detach();
                         }
                         Ok((f, _)) => this.watch_send(row, root, owner, Ev::Findings(f), cx),
                         Err(e) => this.toast(format!("Vigia: o revisor falhou em {name}: {e}"), cx),
