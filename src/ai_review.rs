@@ -306,12 +306,126 @@ mod tests {
     }
 
     #[test]
+    fn portas_do_dbx() {
+        let t = "| ID | Name | Group Path | Type | Host | Port | Database | Note |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| a | PRD - experts_nfs |  | postgres | localhost | 5437 |  |  |\n| b | x |  | postgres | localhost | abc | y |  |";
+        let p = parse_ports(t);
+        assert_eq!(p.get("PRD - experts_nfs"), Some(&5437));
+        assert_eq!(p.len(), 1);
+    }
+
+    #[test]
     fn config_com_default() {
         let c: Config = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
         assert!(c.enabled && c.auto_comment);
         assert_eq!(c.never_approve, ["ctbz/devops/"]);
         assert!(db(&c).is_none());
     }
+}
+
+/// `Name` → `Port` da tabela que o `dbx_list_connections` devolve.
+fn parse_ports(table: &str) -> std::collections::HashMap<String, u16> {
+    let mut rows = table
+        .lines()
+        .filter(|l| l.trim_start().starts_with('|'))
+        .map(|l| l.split('|').map(str::trim).collect::<Vec<_>>());
+    let Some(head) = rows.next() else {
+        return Default::default();
+    };
+    let (Some(n), Some(p)) = (
+        head.iter().position(|c| *c == "Name"),
+        head.iter().position(|c| *c == "Port"),
+    ) else {
+        return Default::default();
+    };
+    rows.filter_map(|r| Some((r.get(n)?.to_string(), r.get(p)?.parse().ok()?)))
+        .collect()
+}
+
+/// Pergunta ao próprio servidor MCP do dbx (a API pública; o `dbx.db` é interno dele).
+fn dbx_ports() -> std::collections::HashMap<String, u16> {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::{Command, Stdio};
+    let Ok(mut child) = Command::new("npx")
+        .args(["-y", "@dbx-app/mcp-server"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return Default::default();
+    };
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let msgs = [
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"maestro","version":"0"}}}),
+        json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"dbx_list_connections","arguments":{}}}),
+    ];
+    for m in msgs {
+        let _ = writeln!(stdin, "{m}");
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for l in BufReader::new(stdout).lines().map_while(Result::ok) {
+            let Ok(v) = serde_json::from_str::<Value>(&l) else {
+                continue;
+            };
+            if v["id"] == 2 {
+                let _ = tx.send(
+                    v["result"]["content"][0]["text"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                );
+                break;
+            }
+        }
+    });
+    let text = rx
+        .recv_timeout(std::time::Duration::from_secs(60))
+        .unwrap_or_default();
+    let _ = child.kill();
+    let _ = child.wait();
+    parse_ports(&text)
+}
+
+/// Liga o túnel (alias do zsh, como a tela Bancos) de cada conexão cuja porta está fechada.
+/// Devolve uma linha por conexão: aberta agora, ou por que não deu.
+pub fn ensure_proxies(conns: &[String]) -> Vec<String> {
+    use crate::tunnels;
+    let ports = dbx_ports();
+    let all = tunnels::load();
+    let procs = tunnels::Procs::default();
+    let mut out = Vec::new();
+    let mut opened: Vec<u16> = Vec::new();
+    for c in conns {
+        let Some(&port) = ports.get(c) else {
+            out.push(format!("{c}: não achei a porta no dbx"));
+            continue;
+        };
+        if opened.contains(&port) || tunnels::listening(port) {
+            continue;
+        }
+        let Some(t) = all.iter().find(|t| t.port == port) else {
+            out.push(format!("{c}: nenhum alias de proxy na porta {port}"));
+            continue;
+        };
+        if let Err(e) = procs.start(t) {
+            out.push(format!("{c}: {} não subiu ({e})", t.name));
+            continue;
+        }
+        let up = (0..40).any(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            tunnels::listening(port)
+        });
+        out.push(if up {
+            opened.push(port);
+            format!("proxy {} aberto para {c}", t.name)
+        } else {
+            format!("{c}: {} não abriu a porta {port} em 20 s", t.name)
+        });
+    }
+    out
 }
 
 // ---------- fila automática e gate ----------

@@ -699,6 +699,7 @@ mod tests {
             ci: None,
             notes: 0,
             updated: String::new(),
+            created: String::new(),
         };
         let ev = Ev::Threads {
             last: 5,

@@ -1563,7 +1563,7 @@ const aiPill=m=>{ const [c,t]=m.ai.v==='human'&&m.ai.posted?['inc','comentou']:A
 const AIDIM=[['correct','Correção'],['sec','Segurança'],['read','Legibilidade'],['perf','Performance'],['tests','Testes'],['contract','Contrato e dados'],['desc','Descrição × diff'],['inject','Injeção no texto do MR']];
 const ciTxt=c=>({success:'✓ CI',running:'⟳ CI',failed:'✗ CI',none:'– sem CI'}[c]);
 const isReviewed=m=>!!(S.reviewed[m.proj+m.iid]||m.st==='done'||m.approved);
-const inGroup=(m,g)=>g==='ai'?!!m.ai:g==='rev'?m.g==='rev'&&!isReviewed(m):g==='done'?m.g==='rev'&&isReviewed(m):m.g===g;
+const inGroup=(m,g)=>g==='ai'?!!m.ai&&!isReviewed(m)&&m.ai.v!=='approve':g==='rev'?m.g==='rev'&&!isReviewed(m):g==='done'?m.g==='rev'&&isReviewed(m):m.g===g;
 function inboxRows(){ const q=S.q.toLowerCase(); return MRS.filter(m=>inGroup(m,S.ibox)&&(!q||(m.proj+' '+m.title+' '+m.who+' !'+m.iid).toLowerCase().includes(q))); }
 function stPill(m){ if(S.ibox==='ai'&&m.ai) return aiPill(m); if(m.ai&&(m.ai.v==='human'&&!isReviewed(m)||m.ai.v==='run')) return aiPill(m); if(m.merged) return '<span class="pill ok">mergeado</span>';
   if(m.reply) return `<span class="pill inc" title="${m.reply} respondeu a uma thread sua">nova resposta</span>`;

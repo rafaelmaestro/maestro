@@ -323,11 +323,15 @@ impl MrsView {
                     }
                 }
                 v.retain(|r| {
-                    self.ai
-                        .mrs
-                        .get(&r.key())
-                        .is_some_and(|e| !(e.status == "ignored" && e.sha == r.sha))
+                    !self.is_reviewed(r)
+                        && self.ai.mrs.get(&r.key()).is_some_and(|e| {
+                            e.sha != r.sha
+                                || e.status != "ignored"
+                                    && e.approved_sha.as_deref() != Some(r.sha.as_str())
+                        })
                 });
+                // ISO 8601: a ordem do texto é a da data
+                v.sort_by(|a, b| b.created.cmp(&a.created));
                 return Some(Ok(v));
             }
         };

@@ -27,6 +27,7 @@ pub struct Row {
     /// `user_notes_count` e `updated_at`: mudou um dos dois, vale reler as discussões
     pub notes: u64,
     pub updated: String,
+    pub created: String,
 }
 
 impl Row {
@@ -60,6 +61,7 @@ pub fn rows(list: &Value) -> Vec<Row> {
             ci: None,
             notes: m["user_notes_count"].as_u64().unwrap_or_default(),
             updated: m["updated_at"].as_str().unwrap_or_default().into(),
+            created: m["created_at"].as_str().unwrap_or_default().into(),
         })
         .collect()
 }
@@ -1004,6 +1006,9 @@ pub fn review(
             "banco só leitura: {}",
             d.connections.join(", ")
         )));
+        for e in crate::ai_review::ensure_proxies(&d.connections) {
+            send(Run::Ok(e));
+        }
     }
     let child = Command::new("claude")
         .args(claude_args(Some(&rubric), db.as_ref()))
