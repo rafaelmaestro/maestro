@@ -405,6 +405,8 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 
 - [x] Não aprova com threads abertas: pede no MR para resolverem e aprova sozinha quando resolvem (mesma sha); "aprovado pela IA" aparece em todas as abas
 
+- [x] Afirmação só segura a aprovação quando é crítica (a mudança depende dela); crítica sem acesso ao banco avisa "sem acesso ao banco para validar · rode de novo"
+
 ## Backlog (não entra sem decisão)
 
 - Conflitos entre features (ripwire branch conflicts)

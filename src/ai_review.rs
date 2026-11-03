@@ -406,10 +406,18 @@ pub struct Facts<'a> {
 }
 
 const MIN_CONFIDENCE: f64 = 0.8;
+pub const NO_DB: &str = "sem acesso ao banco para validar";
 
 /// O veredito do modelo só propõe: quem aprova é esta função.
 pub fn may_approve(f: &Facts) -> Result<(), String> {
     let r = f.report;
+    if let Some(c) = r
+        .claims
+        .iter()
+        .find(|c| c.critical && c.status == "unverified" && c.no_access)
+    {
+        return Err(format!("{NO_DB}: {}", c.claim));
+    }
     if r.verdict != "approve" {
         return Err(if r.summary.is_empty() {
             "a IA não chegou num veredito".into()
@@ -426,8 +434,15 @@ pub fn may_approve(f: &Facts) -> Result<(), String> {
     {
         return Err("tem achado blocker/major".into());
     }
-    if let Some(c) = r.claims.iter().find(|c| c.status != "confirmed") {
-        return Err(format!("afirmação não confirmada: {}", c.claim));
+    if let Some(c) = r.claims.iter().find(|c| c.status == "refuted") {
+        return Err(format!("afirmação desmentida: {}", c.claim));
+    }
+    if let Some(c) = r
+        .claims
+        .iter()
+        .find(|c| c.critical && c.status != "confirmed")
+    {
+        return Err(format!("afirmação crítica não confirmada: {}", c.claim));
     }
     if r.checks.is_empty() || r.checks.iter().any(|c| c.status != "pass") {
         return Err("nem todos os checks passaram".into());
@@ -877,7 +892,9 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
             })
         }
         Action::Human(why) => {
-            let short = if why.chars().count() <= 60 {
+            let short = if why.starts_with(NO_DB) {
+                format!("{NO_DB} · rode de novo quando tiver acesso")
+            } else if why.chars().count() <= 60 {
                 format!("revise você · {why}")
             } else {
                 "revise você".into()
@@ -1012,21 +1029,43 @@ mod gate_tests {
             })
             .contains("confiança")
         );
-        let claim = Report {
+        let claim = |status: &str, critical, no_access| Report {
             claims: vec![mrs::Claim {
                 claim: "x".into(),
-                status: "unverified".into(),
+                status: status.into(),
+                critical,
+                no_access,
                 ..Default::default()
             }],
             ..ok_report()
         };
-        assert!(
-            no(Facts {
-                report: &claim,
+        let gate = |r: &Report| {
+            may_approve(&Facts {
+                report: r,
                 ..base()
             })
-            .contains("afirmação")
+        };
+        assert_eq!(gate(&claim("unverified", false, true)), Ok(()));
+        assert!(
+            gate(&claim("unverified", true, false))
+                .unwrap_err()
+                .contains("crítica")
         );
+        assert!(
+            gate(&claim("unverified", true, true))
+                .unwrap_err()
+                .starts_with(NO_DB)
+        );
+        assert!(
+            gate(&claim("refuted", false, false))
+                .unwrap_err()
+                .contains("desmentida")
+        );
+        let no_db = Report {
+            verdict: "needs_human".into(),
+            ..claim("unverified", true, true)
+        };
+        assert!(gate(&no_db).unwrap_err().starts_with(NO_DB));
         let unk = Report {
             checks: vec![Check {
                 status: "unknown".into(),

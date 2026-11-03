@@ -3668,6 +3668,9 @@ impl MrsView {
                                         .flex()
                                         .gap(px(8.))
                                         .child(pill(&t, lb, col, false))
+                                        .when(x.critical, |d| {
+                                            d.child(pill(&t, "crítica", t.muted, true))
+                                        })
                                         .child(x.claim.clone()),
                                 )
                                 .when(!x.query.is_empty(), |d| {
