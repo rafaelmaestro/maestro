@@ -1401,10 +1401,14 @@ impl MrsView {
             .open
             .as_ref()
             .is_some_and(|(r, _)| r.key() == row.key());
-        if !same {
+        let head = if same {
+            self.head()
+        } else {
+            // relatório salvo da aba IA: o MR ainda vai carregar; as linhas são da sha revisada
+            let sha = self.ai.mrs.get(&row.key()).map(|e| e.sha.clone());
             self.open_row(row.clone(), cx);
-        }
-        let head = self.head();
+            sha.unwrap_or_else(|| row.sha.clone())
+        };
         let list = self.drafts.entry(row.key()).or_default();
         for (x, on) in f.into_iter().filter(|x| x.1) {
             let _ = on;
