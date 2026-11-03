@@ -337,7 +337,12 @@ impl MrsView {
 
     fn ai_rows(&self) -> Vec<Row> {
         let mut v: Vec<Row> = Vec::new();
-        for r in self.lists[0].iter().chain(&self.lists[2]).flatten().flatten() {
+        for r in self.lists[0]
+            .iter()
+            .chain(&self.lists[2])
+            .flatten()
+            .flatten()
+        {
             if !v.iter().any(|w| w.key() == r.key()) {
                 v.push(r.clone());
             }
@@ -763,7 +768,9 @@ impl MrsView {
             .filter(|e| e.sha == r.sha || self.tab == Tab::Ai);
         if let Some(e) = ai {
             let p = e.pill();
-            if self.tab == Tab::Ai || (matches!(p.0, "inc" | "bad") && !self.is_reviewed(r) || e.status == "run") {
+            if self.tab == Tab::Ai
+                || (matches!(p.0, "inc" | "bad") && !self.is_reviewed(r) || e.status == "run")
+            {
                 return p;
             }
         }
@@ -1713,21 +1720,18 @@ impl MrsView {
                             )
                             .child(div().w(px(70.)).flex_none().text_color(cc).child(ci))
                             .child(
-                                div()
-                                    .w(px(pill_w))
-                                    .flex_none()
-                                    .child(
-                                        div()
-                                            .font_family(t.mono.clone())
-                                            .text_size(px(12.))
-                                            .px(px(7.))
-                                            .rounded(px(10.))
-                                            .border_1()
-                                            .border_color(if pk.is_empty() { t.line } else { pc })
-                                            .text_color(pc)
-                                            .whitespace_nowrap()
-                                            .child(pt),
-                                    ),
+                                div().w(px(pill_w)).flex_none().child(
+                                    div()
+                                        .font_family(t.mono.clone())
+                                        .text_size(px(12.))
+                                        .px(px(7.))
+                                        .rounded(px(10.))
+                                        .border_1()
+                                        .border_color(if pk.is_empty() { t.line } else { pc })
+                                        .text_color(pc)
+                                        .whitespace_nowrap()
+                                        .child(pt),
+                                ),
                             ),
                     );
                 }

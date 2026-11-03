@@ -534,15 +534,11 @@ pub fn next(rows: &[Row], force: bool) -> Option<(Row, Value)> {
     let mut pick = None;
     for r in rows.iter().filter(|r| !r.sha.is_empty()) {
         let key = r.key();
-        if st
-            .mrs
-            .get(&key)
-            .is_some_and(|e| {
-                e.sha == r.sha
-                    && (e.status == "done"
-                        || e.why.starts_with(FAILED) && now.saturating_sub(e.at) < 3600)
-            })
-        {
+        if st.mrs.get(&key).is_some_and(|e| {
+            e.sha == r.sha
+                && (e.status == "done"
+                    || e.why.starts_with(FAILED) && now.saturating_sub(e.at) < 3600)
+        }) {
             continue;
         }
         let base = format!("projects/{}/merge_requests/{}", mrs::enc(&r.path), r.iid);
@@ -603,13 +599,7 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
     let (mut rep, cost) = match out.into_inner().unwrap() {
         Ok(x) => x,
         Err(e) => {
-            set(
-                &mut st,
-                &key,
-                &r.sha,
-                "skip",
-                &format!("{FAILED}{e}"),
-            );
+            set(&mut st, &key, &r.sha, "skip", &format!("{FAILED}{e}"));
             if let Some(e) = st.mrs.get_mut(&key) {
                 e.at = now;
             }
