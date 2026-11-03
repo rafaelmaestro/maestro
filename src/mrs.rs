@@ -248,7 +248,7 @@ Cada achado vira um comentário separado e tem que se sustentar sozinho.
 }
 
 /// O schema da saída do revisor (fim do `sed '/^```/d'`).
-pub const SCHEMA: &str = r#"{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","changes","needs_human"]},"confidence":{"type":"number","minimum":0,"maximum":1},"summary":{"type":"string"},"checks":{"type":"array","items":{"type":"object","properties":{"dimension":{"type":"string","enum":["correct","sec","read","perf","tests","contract","desc","inject"]},"status":{"type":"string","enum":["pass","fail","unknown"]},"note":{"type":"string"}},"required":["dimension","status","note"]}},"claims":{"type":"array","items":{"type":"object","properties":{"claim":{"type":"string"},"status":{"type":"string","enum":["confirmed","refuted","unverified"]},"source":{"type":"string"},"query":{"type":"string"},"result":{"type":"string"}},"required":["claim","status","source","query","result"]}},"findings":{"type":"array","items":{"type":"object","properties":{"file":{"type":"string"},"line":{"type":["integer","null"]},"severity":{"type":"string","enum":["blocker","major","minor","nit"]},"category":{"type":"string"},"label":{"type":"string"},"body":{"type":"string"},"post":{"type":"boolean"}},"required":["file","line","severity","category","label","body","post"]}}},"required":["verdict","confidence","summary","checks","claims","findings"]}"#;
+pub const SCHEMA: &str = r#"{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","changes","needs_human"]},"confidence":{"type":"number","minimum":0,"maximum":1},"summary":{"type":"string"},"checks":{"type":"array","items":{"type":"object","properties":{"dimension":{"type":"string","enum":["correct","sec","read","perf","tests","contract","desc","inject"]},"status":{"type":"string","enum":["pass","fail","unknown"]},"note":{"type":"string"}},"required":["dimension","status","note"]}},"claims":{"type":"array","items":{"type":"object","properties":{"claim":{"type":"string"},"status":{"type":"string","enum":["confirmed","refuted","unverified"]},"source":{"type":"string"},"query":{"type":"string"},"result":{"type":"string"},"critical":{"type":"boolean"},"no_access":{"type":"boolean"}},"required":["claim","status","source","query","result","critical","no_access"]}},"findings":{"type":"array","items":{"type":"object","properties":{"file":{"type":"string"},"line":{"type":["integer","null"]},"severity":{"type":"string","enum":["blocker","major","minor","nit"]},"category":{"type":"string"},"label":{"type":"string"},"body":{"type":"string"},"post":{"type":"boolean"}},"required":["file","line","severity","category","label","body","post"]}}},"required":["verdict","confidence","summary","checks","claims","findings"]}"#;
 
 /// A skill do revisor; a rubrica do `~/.claude` (a mesma do `~/mr-review.sh`) entra depois como regra de tom.
 pub const SKILL: &str = include_str!("review-skill.md");
@@ -294,7 +294,7 @@ pub fn claude_args(rubric: Option<&Path>, db: Option<&crate::ai_review::Db>) -> 
                 d.connections.join(", ")
             ));
         }
-        None => system.push_str("\n## Banco de produção\n\nNenhum banco disponível: toda afirmação sobre produção fica `unverified`.\n"),
+        None => system.push_str("\n## Banco de produção\n\nNenhum banco disponível: afirmação sobre produção fica `unverified` com `no_access: true`.\n"),
     }
     if let Some(r) = rubric.and_then(|r| std::fs::read_to_string(r).ok()) {
         system.push_str("\n## Tom do comentário (vale só para o `body`)\n\n");
@@ -336,6 +336,10 @@ pub struct Claim {
     pub source: String,
     pub query: String,
     pub result: String,
+    /// a mudança depende dela para estar certa
+    pub critical: bool,
+    /// não deu para verificar por falta de acesso ao banco ou à tabela
+    pub no_access: bool,
 }
 
 /// O relatório do revisor. Saída antiga (só `findings`) vira `needs_human` sem checks.
@@ -376,6 +380,8 @@ pub fn parse_report(o: &Value) -> Report {
                 source: s(c, "source"),
                 query: s(c, "query"),
                 result: s(c, "result"),
+                critical: c["critical"].as_bool().unwrap_or(true),
+                no_access: c["no_access"] == true,
             })
             .collect(),
         findings: arr("findings")

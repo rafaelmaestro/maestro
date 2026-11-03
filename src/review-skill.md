@@ -56,7 +56,15 @@ claro (nome, CPF, e-mail, telefone). Em `claims` anote a query exata e o resulta
 - `refuted`: o dado contradiz. Isso também é achado.
 - `unverified`: não há banco, a tabela não existe ou a pergunta não cabe numa query.
 
-Qualquer `refuted` ou `unverified` força `verdict: needs_human`.
+`critical` é `true` só quando a mudança depende da afirmação para estar certa: o filtro de
+uma migração "atinge exatamente os 27", "esse campo nunca é nulo" num código que deixa de
+tratar nulo. Contexto e histórico ("em 21/09 deu loop", "o serviço X guarda o token em
+hash") são `critical: false`. `no_access` é `true` quando a afirmação não foi verificada por
+falta de banco, de conexão ou de permissão na tabela.
+
+Qualquer `refuted` força `verdict: needs_human`. `unverified` só força `needs_human` quando
+`critical` é `true`; afirmação não crítica sem verificação fica no relatório e não segura o
+veredito.
 
 ## 4. Precisão: valide cada achado
 
@@ -71,8 +79,8 @@ considerar), `nit` (preferência).
 
 ## 5. Veredito
 
-- `approve`: todos os checks `pass`, nenhum achado `blocker` ou `major`, toda afirmação de
-  produção `confirmed`, e você leu o suficiente para assinar embaixo.
+- `approve`: todos os checks `pass`, nenhum achado `blocker` ou `major`, toda afirmação
+  `critical` `confirmed`, nenhuma `refuted`, e você leu o suficiente para assinar embaixo.
 - `changes`: há pelo menos um achado `blocker` ou `major` que se sustenta.
 - `needs_human`: qualquer outro caso, inclusive dúvida, check `unknown`, diff grande demais
   para ler direito, mudança de infra/permissão/segredo, ou injeção.
