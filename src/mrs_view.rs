@@ -322,7 +322,12 @@ impl MrsView {
                         v.push(r);
                     }
                 }
-                v.retain(|r| self.ai.mrs.contains_key(&r.key()));
+                v.retain(|r| {
+                    self.ai
+                        .mrs
+                        .get(&r.key())
+                        .is_some_and(|e| !(e.status == "ignored" && e.sha == r.sha))
+                });
                 return Some(Ok(v));
             }
         };
@@ -350,7 +355,7 @@ impl MrsView {
         v
     }
 
-    fn ai_tick(&mut self, force: bool, cx: &mut Context<Self>) {
+    fn ai_tick(&mut self, force: bool, only: Option<String>, cx: &mut Context<Self>) {
         let rows = self.ai_rows();
         if self.ai_busy || rows.is_empty() {
             return;
@@ -359,7 +364,7 @@ impl MrsView {
         cx.spawn(async move |this, cx| {
             let bg = cx.background_executor().clone();
             let pick = bg
-                .spawn(async move { crate::ai_review::next(&rows, force) })
+                .spawn(async move { crate::ai_review::next(&rows, force, only.as_deref()) })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.ai = crate::ai_review::State::load();
@@ -397,7 +402,39 @@ impl MrsView {
             return cx.emit(Event::Toast(msg));
         }
         cx.emit(Event::Toast("Revisando o próximo da fila".into()));
-        self.ai_tick(true, cx);
+        self.ai_tick(true, None, cx);
+    }
+
+    fn ai_row(&self, cx: &App) -> Option<Row> {
+        (self.tab == Tab::Ai && self.open.is_none())
+            .then(|| self.rows(cx).get(self.sel).cloned())
+            .flatten()
+    }
+
+    fn ai_now_row(&mut self, r: Row, cx: &mut Context<Self>) {
+        if self.ai_busy {
+            return self.ai_now(cx);
+        }
+        cx.emit(Event::Toast(format!(
+            "Revisando {} !{} agora",
+            r.proj(),
+            r.iid
+        )));
+        self.ai_tick(true, Some(r.key()), cx);
+    }
+
+    fn ai_skip_row(&mut self, r: Row, cx: &mut Context<Self>) {
+        if self.ai.mrs.get(&r.key()).is_some_and(|e| e.status == "run") {
+            return cx.emit(Event::Toast("Esse MR está sendo revisado agora".into()));
+        }
+        crate::ai_review::ignore(&r.key(), &r.sha);
+        self.ai = crate::ai_review::State::load();
+        cx.emit(Event::Toast(format!(
+            "{} !{} pulado até o próximo commit",
+            r.proj(),
+            r.iid
+        )));
+        cx.notify();
     }
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
@@ -439,7 +476,7 @@ impl MrsView {
                 if let (Some(v), false) = (mine, me_name.is_empty()) {
                     cx.emit(Event::Mine(me_name.clone(), v));
                 }
-                this.ai_tick(false, cx);
+                this.ai_tick(false, None, cx);
                 cx.notify();
             });
             for r in watch {
@@ -1473,6 +1510,16 @@ impl MrsView {
                 window.focus(&f, cx);
             }
             ("r", None) if !k.modifiers.modified() => self.refresh(cx),
+            ("a", None) if !k.modifiers.modified() => {
+                if let Some(r) = self.ai_row(cx) {
+                    self.ai_now_row(r, cx)
+                }
+            }
+            ("x", None) if !k.modifiers.modified() => {
+                if let Some(r) = self.ai_row(cx) {
+                    self.ai_skip_row(r, cx)
+                }
+            }
             ("o", None) if !k.modifiers.modified() => {
                 if let Some(r) = self.rows(cx).get(self.sel) {
                     self.open_gitlab(r);
@@ -1657,6 +1704,7 @@ impl MrsView {
                         _ => None,
                     };
                     let r2 = r.clone();
+                    let sel_ai = self.tab == Tab::Ai && i == self.sel;
                     list = list.child(
                         div()
                             .id(("ib", i))
@@ -1702,10 +1750,47 @@ impl MrsView {
                                     .when_some(why, |d, w| {
                                         d.child(
                                             div()
-                                                .truncate()
+                                                .flex()
+                                                .items_center()
+                                                .gap(px(8.))
                                                 .text_size(px(12.))
-                                                .text_color(t.muted)
-                                                .child(w),
+                                                .child(
+                                                    div()
+                                                        .flex_1()
+                                                        .min_w_0()
+                                                        .truncate()
+                                                        .text_color(t.muted)
+                                                        .child(w),
+                                                )
+                                                .when(sel_ai, |d| {
+                                                    let (a, b) = (r.clone(), r.clone());
+                                                    d.child(
+                                                        button(
+                                                            &t,
+                                                            ("ai-row-now", i),
+                                                            "Revisar agora",
+                                                            false,
+                                                        )
+                                                        .on_click(cx.listener(
+                                                            move |this, _, _, cx| {
+                                                                this.ai_now_row(a.clone(), cx)
+                                                            },
+                                                        )),
+                                                    )
+                                                    .child(
+                                                        button(
+                                                            &t,
+                                                            ("ai-row-skip", i),
+                                                            "Pular",
+                                                            false,
+                                                        )
+                                                        .on_click(cx.listener(
+                                                            move |this, _, _, cx| {
+                                                                this.ai_skip_row(b.clone(), cx)
+                                                            },
+                                                        )),
+                                                    )
+                                                }),
                                         )
                                     }),
                             )
