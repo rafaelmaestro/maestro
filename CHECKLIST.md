@@ -399,6 +399,8 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 
 - [x] "Abrir no GitLab" na linha selecionada da aba IA
 
+- [x] Rascunhos criados do relatório salvo da aba IA usam a sha revisada (antes saíam sem sha e a publicação recusava com "commit novo")
+
 ## Backlog (não entra sem decisão)
 
 - Conflitos entre features (ripwire branch conflicts)
