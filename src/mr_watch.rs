@@ -339,7 +339,7 @@ pub fn review(row: &Row) -> Result<(Vec<Finding>, f64), String> {
         &notes,
         None,
         |m| match m {
-            crate::mrs::Run::Done(f, c) => *out.lock().unwrap() = Ok((f, c)),
+            crate::mrs::Run::Done(r, c) => *out.lock().unwrap() = Ok((r.findings, c)),
             crate::mrs::Run::Failed(e) => *out.lock().unwrap() = Err(e),
             _ => {}
         },
