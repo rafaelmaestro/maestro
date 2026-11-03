@@ -1,3 +1,4 @@
+mod ai_review;
 mod ask;
 mod audit;
 mod audit_view;
@@ -82,6 +83,13 @@ fn main() {
             Ok(None) => {}
             Err(e) => eprintln!("maestro checkpoint: {e}"),
         }
+        return;
+    }
+    // `maestro sql-guard`: o hook PreToolUse do revisor barra SQL de escrita e conexão fora da lista
+    if args.get(1).map(String::as_str) == Some("sql-guard") {
+        let mut stdin = String::new();
+        let _ = std::io::Read::read_to_string(&mut std::io::stdin(), &mut stdin);
+        ai_review::guard_main(&stdin);
         return;
     }
     // `maestro perm <id>`: o hook PermissionRequest só anota o pedido (as permissões que aprendem)

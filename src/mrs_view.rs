@@ -67,7 +67,8 @@ enum Tab {
 enum Phase {
     Setup,
     Run(Vec<(&'static str, String)>),
-    Done(Vec<(Finding, bool)>, f64),
+    /// os achados com a marca de cada um; o relatório fica sem `findings`
+    Done(Vec<(Finding, bool)>, f64, mrs::Report),
 }
 
 /// A gaveta "Revisão Claude" do protótipo.
@@ -179,6 +180,29 @@ enum Side {
 }
 
 /// O `.pill` do protótipo; `dashed` é o `.pill.gen`.
+/// O veredito do revisor como no protótipo: `aprovado pela IA`, `revise você`, `pediu mudanças`.
+pub fn verdict_label(t: &Theme, v: &str) -> (&'static str, Hsla) {
+    match v {
+        "approve" => ("aprovado pela IA", t.ok),
+        "changes" => ("pediu mudanças", red()),
+        _ => ("revise você", t.orange),
+    }
+}
+
+fn dimension_name(d: &str) -> &str {
+    match d {
+        "correct" => "Correção",
+        "sec" => "Segurança",
+        "read" => "Legibilidade",
+        "perf" => "Performance",
+        "tests" => "Testes",
+        "contract" => "Contrato e dados",
+        "desc" => "Descrição × diff",
+        "inject" => "Injeção no texto do MR",
+        x => x,
+    }
+}
+
 fn pill(t: &Theme, text: &str, c: Hsla, dashed: bool) -> Div {
     div()
         .font_family(t.mono.clone())
@@ -1122,8 +1146,9 @@ impl MrsView {
                                 s.push(("ok", t));
                             }
                             (Run::Tool(t), Phase::Run(s)) => s.push(("sub", t)),
-                            (Run::Done(mut f, cost), _) => {
+                            (Run::Done(mut r, cost), _) => {
                                 d.pid = None;
+                                let mut f = std::mem::take(&mut r.findings);
                                 mrs::mark_outside(&mut f, &raw);
                                 d.phase = Phase::Done(
                                     f.into_iter()
@@ -1133,6 +1158,7 @@ impl MrsView {
                                         })
                                         .collect(),
                                     cost,
+                                    r,
                                 );
                                 mrs::mark_seen(&d.row.path, d.row.iid, &d.row.sha);
                             }
@@ -1169,7 +1195,7 @@ impl MrsView {
     fn make_drafts(&mut self, cx: &mut Context<Self>) {
         let Some(Drawer {
             row,
-            phase: Phase::Done(f, _),
+            phase: Phase::Done(f, ..),
             ..
         }) = self.drawer.take()
         else {
@@ -3187,7 +3213,7 @@ impl MrsView {
                                 .child(
                                     "· descrição do MR e todos os comentários existentes (dedup)",
                                 )
-                                .child("· rubrica ~/.claude/mr-review-rubric.md")
+                                .child("· skill do revisor + rubrica ~/.claude/mr-review-rubric.md")
                                 .child("· CLAUDE.md e skills do repo"),
                         ),
                     )
@@ -3236,9 +3262,86 @@ impl MrsView {
                 );
                 (b, foot)
             }
-            Phase::Done(f, cost) => {
+            Phase::Done(f, cost, rep) => {
                 let on = f.iter().filter(|x| x.1).count();
                 let mut b = div().flex().flex_col().gap(px(8.));
+                let (vt, vc) = verdict_label(&t, &rep.verdict);
+                b = b
+                    .child(
+                        div()
+                            .flex()
+                            .gap(px(8.))
+                            .items_center()
+                            .child(pill(&t, vt, vc, false))
+                            .child(
+                                div()
+                                    .font_family(t.mono.clone())
+                                    .text_size(px(12.5))
+                                    .text_color(t.muted)
+                                    .child(format!(
+                                        "confiança {}% · US$ {}",
+                                        (rep.confidence * 100.).round(),
+                                        crate::sidebar::brl(*cost)
+                                    )),
+                            ),
+                    )
+                    .when(!rep.summary.is_empty(), |b| b.child(rep.summary.clone()));
+                if !rep.checks.is_empty() {
+                    let mut c = fieldset("Checks")
+                        .font_family(t.mono.clone())
+                        .text_size(px(13.));
+                    for x in &rep.checks {
+                        let (g, col) = match x.status.as_str() {
+                            "pass" => ("✓", t.ok),
+                            "fail" => ("✗", red()),
+                            _ => ("?", yellow()),
+                        };
+                        c = c.child(div().text_color(col).child(format!(
+                            "{g} {}{}",
+                            dimension_name(&x.dimension),
+                            if x.note.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" · {}", x.note)
+                            }
+                        )));
+                    }
+                    b = b.child(c);
+                }
+                if !rep.claims.is_empty() {
+                    let mut c = fieldset("Afirmações sobre produção");
+                    for x in &rep.claims {
+                        let (lb, col) = match x.status.as_str() {
+                            "confirmed" => ("confirmado", t.ok),
+                            "refuted" => ("não bate", red()),
+                            _ => ("não verificado", yellow()),
+                        };
+                        c = c.child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap(px(4.))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .gap(px(8.))
+                                        .child(pill(&t, lb, col, false))
+                                        .child(x.claim.clone()),
+                                )
+                                .when(!x.query.is_empty(), |d| {
+                                    d.child(
+                                        div()
+                                            .font_family(t.mono.clone())
+                                            .text_size(px(12.5))
+                                            .text_color(t.muted)
+                                            .child(format!("{} · {}", x.source, x.query)),
+                                    )
+                                })
+                                .child(format!("→ {}", x.result)),
+                        );
+                    }
+                    b = b.child(c);
+                }
                 if f.is_empty() {
                     b = b.child(div().text_color(t.muted).child("Nada novo para comentar: o que o Claude achou já estava nos comentários do MR."));
                 }
@@ -3262,7 +3365,7 @@ impl MrsView {
                             .when(!sel, |d| d.opacity(0.55))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 if let Some(Drawer {
-                                    phase: Phase::Done(f, _),
+                                    phase: Phase::Done(f, ..),
                                     ..
                                 }) = this.drawer.as_mut()
                                 {
