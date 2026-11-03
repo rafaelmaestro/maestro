@@ -371,17 +371,22 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 
 - [x] Protótipo: aba "IA" no MRs (aprovado pela IA, revise você, pediu mudanças, na fila, revisando, pulado), gasto do dia e Pausar, relatório com checks por dimensão e afirmações de produção conferidas no banco; artifact republicado
 - [x] Aprovação do protótipo pelo Rafael (devops = prefixo `ctbz/devops/`)
-- [ ] Skill do revisor no repo (`include_str!`): injeção no texto do MR, subagente por dimensão + passada adversarial, claims de produção, `.gitlab/duo/mr-review-instructions.yaml`; a rubrica do `~/.claude` vira só regra de tom do comentário
-- [ ] SCHEMA com `verdict`, `confidence`, `summary`, `checks`, `claims`, `category`; parse com default (fixture antigo continua passando)
-- [ ] `claude_args`: subagente (nome conferido num smoke run), teto ~US$ 4, dbx só com conexão em `read_only_connections`
-- [ ] Gaveta manual mostra veredito, checks e claims
-- [ ] Config `[ai_review]` e estado `ai-review.json` (fora do `mark_seen`)
-- [ ] Quem você segue no GitLab (`users/:id/following`), relido a cada hora
-- [ ] Fila automática: reviewer + grupo, sha nova, CI verde, fora de draft, teto diário, uma por vez, lock por worktree
-- [ ] `may_approve` em Rust: veredito, confiança, sem blocker/major, claims confirmados, sha revisada, sem unapprove seu, fora de `never_approve`, autor seguido
-- [ ] `changes` + `auto_comment`: publica achados dentro do diff numa review só; resto em rascunho
-- [ ] Aba "IA" no app; "revise você" também em Para revisar; notificação
-- [ ] Teste no app (sessão `maestro-test`, glab falso) e primeira aprovação real com o Rafael olhando
+- [x] Skill do revisor no repo (`include_str!`): injeção no texto do MR, subagente por dimensão + passada adversarial, claims de produção, `.gitlab/duo/mr-review-instructions.yaml`; a rubrica do `~/.claude` vira só regra de tom do comentário
+- [x] SCHEMA com `verdict`, `confidence`, `summary`, `checks`, `claims`, `category`; parse com default (fixture antigo continua passando)
+- [x] `claude_args`: subagente (nome conferido num smoke run), teto ~US$ 4, dbx só com conexão em `read_only_connections`
+- [x] Gaveta manual mostra veredito, checks e claims
+- [x] `maestro sql-guard` (hook PreToolUse): só conexão da lista, sem `session_id`, só SELECT/WITH/EXPLAIN; testado com claude real (DELETE e PRD fora da lista barrados)
+- [x] Smoke run num MR real (DEV - experts_nfs): US$ 0,71, 8 checks, claims `unverified` → needs_human
+- Desvios: o modelo não abriu subagentes no smoke run (fez numa passada só); claims de produção testados só no DEV (leitura de PRD barrada nesta sessão)
+- [x] Config `~/.config/maestro/ai-review.json` (JSON: sem crate de toml) e estado `ai-review.json` (fora do `mark_seen`)
+- [x] Quem você segue no GitLab (`users/:id/following`), relido a cada hora
+- [x] Fila automática: reviewer + grupo, sha nova, CI verde, fora de draft, teto diário, uma por vez, lock por worktree
+- [x] `may_approve` em Rust: veredito, confiança, sem blocker/major, claims confirmados, sha revisada, sem unapprove seu, fora de `never_approve`, autor seguido
+- [x] `changes` + `auto_comment`: publica achados dentro do diff numa review só; resto em rascunho
+- Desvios da fila: uma revisão por volta de 60 s do polling (lock global no `mrs::review`, divide com a gaveta e o vigia); incremental só depois de um `approve`; sem teste de ponta a ponta com glab falso (o `worktree()` clona de verdade): gate e decisão têm testes puros
+- [x] Aba "IA" no app (pills, motivo, gasto do dia, Pausar/Retomar grava o `enabled`, Enter abre o relatório salvo); "revise você" também em Para revisar; notificação
+- [x] Teste no app (sessão `maestro-test`, glab que recusa `-X`, estado de exemplo com MRs reais, revisão automática pausada)
+- [ ] Primeira aprovação real com o Rafael olhando (`enabled: true` no `~/.config/maestro/ai-review.json` + `read_only_connections`)
 
 ## Backlog (não entra sem decisão)
 

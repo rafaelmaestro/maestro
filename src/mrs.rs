@@ -241,16 +241,20 @@ Compare o que a descrição promete com o que o diff faz: sobra, falta ou diverg
 
 Cada achado vira um comentário separado e tem que se sustentar sozinho.
 - file/line: caminho relativo à raiz do repo e linha DO ARQUIVO NOVO, que precisa aparecer no diff (adicionada ou de contexto). Sem linha exata: line null.
-- severity: blocker, major, minor ou nit. label: issue, suggestion, question, nitpick ou praise.
-- body: markdown curto, o comentário como ele vai aparecer no MR."
+- severity: blocker, major, minor ou nit. label: issue, suggestion, question, nitpick ou praise. category: uma das dimensões dos checks.
+- body: markdown curto, o comentário como ele vai aparecer no MR. post: true só se passa na barra para virar comentário.
+- verdict, confidence, summary, checks e claims: como a skill de revisão manda."
     )
 }
 
 /// O schema da saída do revisor (fim do `sed '/^```/d'`).
-pub const SCHEMA: &str = r#"{"type":"object","properties":{"findings":{"type":"array","items":{"type":"object","properties":{"file":{"type":"string"},"line":{"type":["integer","null"]},"severity":{"type":"string","enum":["blocker","major","minor","nit"]},"label":{"type":"string"},"body":{"type":"string"}},"required":["file","line","severity","label","body"]}}},"required":["findings"]}"#;
+pub const SCHEMA: &str = r#"{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","changes","needs_human"]},"confidence":{"type":"number","minimum":0,"maximum":1},"summary":{"type":"string"},"checks":{"type":"array","items":{"type":"object","properties":{"dimension":{"type":"string","enum":["correct","sec","read","perf","tests","contract","desc","inject"]},"status":{"type":"string","enum":["pass","fail","unknown"]},"note":{"type":"string"}},"required":["dimension","status","note"]}},"claims":{"type":"array","items":{"type":"object","properties":{"claim":{"type":"string"},"status":{"type":"string","enum":["confirmed","refuted","unverified"]},"source":{"type":"string"},"query":{"type":"string"},"result":{"type":"string"}},"required":["claim","status","source","query","result"]}},"findings":{"type":"array","items":{"type":"object","properties":{"file":{"type":"string"},"line":{"type":["integer","null"]},"severity":{"type":"string","enum":["blocker","major","minor","nit"]},"category":{"type":"string"},"label":{"type":"string"},"body":{"type":"string"},"post":{"type":"boolean"}},"required":["file","line","severity","category","label","body","post"]}}},"required":["verdict","confidence","summary","checks","claims","findings"]}"#;
 
-/// 11. A rubrica no system prompt e só ferramentas de leitura.
-pub fn claude_args(rubric: Option<&Path>) -> Vec<String> {
+/// A skill do revisor; a rubrica do `~/.claude` (a mesma do `~/mr-review.sh`) entra depois como regra de tom.
+pub const SKILL: &str = include_str!("review-skill.md");
+
+/// 11. A skill e a rubrica no system prompt e só ferramentas de leitura; com `db`, o dbx atrás do `sql-guard`.
+pub fn claude_args(rubric: Option<&Path>, db: Option<&crate::ai_review::Db>) -> Vec<String> {
     let mut a: Vec<String> = [
         "-p",
         "--output-format",
@@ -259,14 +263,14 @@ pub fn claude_args(rubric: Option<&Path>) -> Vec<String> {
         "--json-schema",
         SCHEMA,
         "--max-budget-usd",
-        "2.00",
+        "4.00",
         "--no-session-persistence",
         // roda no checkout do MR: o `.claude/` dele (hooks) não pode carregar; skills do usuário ficam
         "--setting-sources",
         "user",
         "--strict-mcp-config",
         "--tools",
-        "Read,Grep,Glob,Bash,Skill",
+        "Read,Grep,Glob,Bash,Skill,Agent",
         "--allowedTools",
         "Bash(git diff:*)",
         "Bash(git log:*)",
@@ -276,32 +280,125 @@ pub fn claude_args(rubric: Option<&Path>) -> Vec<String> {
         "Grep",
         "Glob",
         "Skill",
+        "Agent",
     ]
     .map(String::from)
     .to_vec();
-    if let Some(r) = rubric.and_then(|r| std::fs::read_to_string(r).ok()) {
-        a.push("--append-system-prompt".into());
-        a.push(r);
+    let mut system = SKILL.to_string();
+    match db {
+        Some(d) => {
+            a.extend(crate::ai_review::DB_TOOLS.iter().map(|t| t.to_string()));
+            a.extend(["--mcp-config".into(), d.mcp.clone(), "--settings".into(), d.settings.clone()]);
+            system.push_str(&format!(
+                "\n## Banco de produção\n\nConexões do dbx só de leitura (passe sempre `connection_name`, nunca `session_id`): {}.\n",
+                d.connections.join(", ")
+            ));
+        }
+        None => system.push_str("\n## Banco de produção\n\nNenhum banco disponível: toda afirmação sobre produção fica `unverified`.\n"),
     }
+    if let Some(r) = rubric.and_then(|r| std::fs::read_to_string(r).ok()) {
+        system.push_str("\n## Tom do comentário (vale só para o `body`)\n\n");
+        system.push_str(&r);
+    }
+    a.push("--append-system-prompt".into());
+    a.push(system);
     a
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Finding {
     pub file: String,
     pub line: Option<u32>,
     pub severity: String,
+    pub category: String,
     pub label: String,
     pub body: String,
+    /// o achado passa na barra para virar comentário
+    pub post: bool,
     /// 8. linha fora do diff: vai como nota geral e vem desmarcado
     pub outside: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct Check {
+    pub dimension: String,
+    pub status: String,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct Claim {
+    pub claim: String,
+    pub status: String,
+    pub source: String,
+    pub query: String,
+    pub result: String,
+}
+
+/// O relatório do revisor. Saída antiga (só `findings`) vira `needs_human` sem checks.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct Report {
+    pub verdict: String,
+    pub confidence: f64,
+    pub summary: String,
+    pub checks: Vec<Check>,
+    pub claims: Vec<Claim>,
+    pub findings: Vec<Finding>,
+}
+
+fn s(v: &Value, k: &str) -> String {
+    v[k].as_str().unwrap_or_default().into()
+}
+
+pub fn parse_report(o: &Value) -> Report {
+    let arr = |k: &str| o[k].as_array().cloned().unwrap_or_default();
+    Report {
+        verdict: o["verdict"].as_str().unwrap_or("needs_human").into(),
+        confidence: o["confidence"].as_f64().unwrap_or(0.),
+        summary: s(o, "summary"),
+        checks: arr("checks")
+            .iter()
+            .map(|c| Check {
+                dimension: s(c, "dimension"),
+                status: c["status"].as_str().unwrap_or("unknown").into(),
+                note: s(c, "note"),
+            })
+            .collect(),
+        claims: arr("claims")
+            .iter()
+            .map(|c| Claim {
+                claim: s(c, "claim"),
+                status: c["status"].as_str().unwrap_or("unverified").into(),
+                source: s(c, "source"),
+                query: s(c, "query"),
+                result: s(c, "result"),
+            })
+            .collect(),
+        findings: arr("findings")
+            .iter()
+            .map(|f| Finding {
+                file: s(f, "file"),
+                line: f["line"].as_u64().map(|l| l as u32),
+                severity: f["severity"].as_str().unwrap_or("minor").into(),
+                category: s(f, "category"),
+                label: s(f, "label"),
+                body: s(f, "body"),
+                post: f["post"].as_bool().unwrap_or(true),
+                outside: false,
+            })
+            .collect(),
+    }
 }
 
 /// Um evento do `stream-json`: o passo para a tela de progresso, ou o resultado.
 #[derive(Debug, PartialEq)]
 pub enum Step {
     Tool(String),
-    Done(Vec<Finding>, f64),
+    Done(Report, f64),
     Failed(String),
 }
 
@@ -339,20 +436,10 @@ pub fn parse_event(line: &str) -> Option<Step> {
                         .into(),
                 ));
             }
-            let f = v["structured_output"]["findings"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|f| Finding {
-                    file: f["file"].as_str().unwrap_or_default().into(),
-                    line: f["line"].as_u64().map(|l| l as u32),
-                    severity: f["severity"].as_str().unwrap_or("minor").into(),
-                    label: f["label"].as_str().unwrap_or_default().into(),
-                    body: f["body"].as_str().unwrap_or_default().into(),
-                    outside: false,
-                })
-                .collect();
-            Some(Step::Done(f, v["total_cost_usd"].as_f64().unwrap_or(0.)))
+            Some(Step::Done(
+                parse_report(&v["structured_output"]),
+                v["total_cost_usd"].as_f64().unwrap_or(0.),
+            ))
         }
         _ => None,
     }
@@ -865,7 +952,7 @@ pub enum Run {
     Ok(String),
     Tool(String),
     Pid(u32),
-    Done(Vec<Finding>, f64),
+    Done(Report, f64),
     Failed(String),
 }
 
@@ -882,6 +969,12 @@ pub fn review(
     send: impl Fn(Run),
 ) {
     use std::io::{BufRead, Write};
+    static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // um revisor por vez: a gaveta, o vigia e a fila automática dividem worktree e teto de gasto
+    let _one = ONE.try_lock().or_else(|_| {
+        send(Run::Ok("esperando a outra revisão terminar".into()));
+        ONE.lock()
+    });
     let wt = match worktree(path, iid, target) {
         Ok(w) => w,
         Err(e) => return send(Run::Failed(format!("worktree: {e}"))),
@@ -898,8 +991,15 @@ pub fn review(
     )));
     let rubric = PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
         .join(".claude/mr-review-rubric.md");
+    let db = crate::ai_review::db(&crate::ai_review::Config::load());
+    if let Some(d) = &db {
+        send(Run::Ok(format!(
+            "banco só leitura: {}",
+            d.connections.join(", ")
+        )));
+    }
     let child = Command::new("claude")
-        .args(claude_args(Some(&rubric)))
+        .args(claude_args(Some(&rubric), db.as_ref()))
         .current_dir(&wt)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -1116,6 +1216,7 @@ mod tests {
                 label: "issue".into(),
                 body: "b".into(),
                 outside: false,
+                ..Default::default()
             },
             Finding {
                 file: "a.ts".into(),
@@ -1124,6 +1225,7 @@ mod tests {
                 label: "nitpick".into(),
                 body: "b".into(),
                 outside: false,
+                ..Default::default()
             },
         ];
         mark_outside(&mut f, &[("a.ts".into(), DIFF.into())]);
@@ -1140,7 +1242,31 @@ mod tests {
             json!([{"d": "a[0][1]"}, {"d": "b"}])
         );
         // 11
-        let args = claude_args(None);
+        let args = claude_args(None, None);
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["--tools", "Read,Grep,Glob,Bash,Skill,Agent"])
+        );
+        assert!(
+            !args
+                .iter()
+                .any(|a| a.starts_with("mcp__") || a == "--mcp-config")
+        );
+        assert!(args.last().unwrap().contains("Nenhum banco disponível"));
+        let db = crate::ai_review::Db {
+            mcp: "{}".into(),
+            settings: "{\"hooks\":{}}".into(),
+            connections: vec!["PRD - x".into()],
+        };
+        let with_db = claude_args(None, Some(&db));
+        assert!(with_db.contains(&"mcp__dbx__dbx_execute_query".to_string()));
+        assert!(!with_db.contains(&"mcp__dbx__dbx_execute_batch".to_string()));
+        assert!(
+            with_db
+                .windows(2)
+                .any(|w| w[0] == "--settings" && w[1].contains("hooks"))
+        );
+        assert!(with_db.last().unwrap().contains("PRD - x"));
         assert!(
             args.contains(&"Bash(git blame:*)".to_string())
                 && !args.iter().any(|a| a == "Edit" || a == "Write")
@@ -1298,14 +1424,41 @@ mod tests {
             .filter_map(parse_event)
             .collect();
         assert_eq!(steps[0], Step::Tool("Read src/a.ts".into()));
-        let Some(Step::Done(f, cost)) = steps.last() else {
+        let Some(Step::Done(r, cost)) = steps.last() else {
             panic!("sem resultado")
         };
+        let f = &r.findings;
+        assert_eq!((r.verdict.as_str(), f[0].post), ("needs_human", true));
         assert_eq!(
             (f.len(), f[0].file.as_str(), f[0].line),
             (1, "a.ts", Some(1))
         );
         assert!(*cost > 0.);
+    }
+
+    #[test]
+    fn relatorio_completo() {
+        let r = parse_report(&json!({"verdict":"approve","confidence":0.9,"summary":"ok",
+            "checks":[{"dimension":"sec","status":"pass","note":""}],
+            "claims":[{"claim":"c","status":"confirmed","source":"PRD - x","query":"select 1","result":"1"}],
+            "findings":[{"file":"a","line":null,"severity":"nit","category":"read","label":"nitpick","body":"b","post":false}]}));
+        assert_eq!(
+            (
+                r.verdict.as_str(),
+                r.confidence,
+                r.checks[0].status.as_str()
+            ),
+            ("approve", 0.9, "pass")
+        );
+        assert_eq!(
+            (
+                r.claims[0].query.as_str(),
+                r.findings[0].post,
+                r.findings[0].line
+            ),
+            ("select 1", false, None)
+        );
+        assert!(SCHEMA.contains("needs_human") && serde_json::from_str::<Value>(SCHEMA).is_ok());
     }
 
     #[test]
