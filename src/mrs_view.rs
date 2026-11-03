@@ -3834,19 +3834,23 @@ impl MrsView {
                         .border_color(t.line)
                         .child(
                             div()
+                                .flex_none()
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .child("Revisão Claude"),
                         )
                         .child(
                             div()
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
                                 .font_family(t.mono.clone())
                                 .text_color(t.muted)
                                 .child(format!("{} !{}", d.row.proj(), d.row.iid)),
                         )
-                        .child(div().flex_1())
                         .child(
                             div()
                                 .id("rv-c")
+                                .flex_none()
                                 .cursor_pointer()
                                 .text_color(t.muted)
                                 .on_click(cx.listener(|this, _, _, cx| this.close_drawer(cx)))
