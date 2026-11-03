@@ -412,6 +412,8 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 
 - [x] Botão ↻ na barra da inbox de MRs (o do protótipo), além do R
 
+- [x] Pedido de resolver threads sai como nota comum (draft publicado virava thread e segurava a aprovação); título longo da gaveta não empurra o × para fora
+
 ## Backlog (não entra sem decisão)
 
 - Conflitos entre features (ripwire branch conflicts)

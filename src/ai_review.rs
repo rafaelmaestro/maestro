@@ -965,25 +965,14 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
     let notice = match action {
         Action::Approve => approve(&r, e, &rep.summary),
         Action::Resolve => {
-            let mut note = vec![mrs::Draft {
-                id: 0,
-                file: String::new(),
-                line: None,
-                old: None,
-                body: THREADS_NOTE.into(),
-                by: "Claude".into(),
-                sev: None,
-                label: None,
-                head: r.sha.clone(),
-                gitlab_id: None,
-                error: None,
-                general: true,
-                reply_to: None,
-            }];
-            let res = opened
-                .as_ref()
-                .map_err(Clone::clone)
-                .and_then(|o| mrs::publish(&r.path, r.iid, o, &mut note));
+            // nota comum, não draft: draft publicado vira thread resolvível e segura a própria aprovação
+            let base = format!("projects/{}/merge_requests/{}", mrs::enc(&r.path), r.iid);
+            let res = mrs::write(
+                "POST",
+                &format!("{base}/notes"),
+                &json!({"body": THREADS_NOTE}),
+            )
+            .map(|_| ());
             e.wait_threads = true;
             e.why = match res {
                 Ok(()) => format!("{THREADS} · pedi no MR · {}", rep.summary),
