@@ -580,7 +580,7 @@ impl Review {
                 editor::Event::Toast(m) => cx.emit(Event::Toast(m.clone(), None)),
                 editor::Event::ShowDiff(p) => this.show_file(p.clone(), cx),
                 editor::Event::Open(abs, line) => this.open_at(abs, *line, window, cx),
-                editor::Event::OpenMr(row) => cx.emit(Event::OpenMr(row.clone())),
+                editor::Event::OpenMr(row) => cx.emit(Event::OpenMr((**row).clone())),
                 editor::Event::History => this.open_history(cx),
                 editor::Event::CloseTab => this.close_file(this.active, window, cx),
                 editor::Event::CycleTab(next) => {

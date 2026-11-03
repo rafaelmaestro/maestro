@@ -141,6 +141,7 @@ mod tests {
             ci: None,
             notes,
             updated: format!("t{notes}"),
+            created: String::new(),
         }
     }
 

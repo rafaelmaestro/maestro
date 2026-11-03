@@ -37,7 +37,7 @@ pub enum Event {
     /// ir para a definição em outro arquivo: (caminho absoluto, linha 0-based)
     Open(PathBuf, u32),
     /// "Abrir MR" do blame
-    OpenMr(Row),
+    OpenMr(Box<Row>),
     /// "Histórico do arquivo" do blame
     History,
     /// Ctrl+W
@@ -859,7 +859,7 @@ impl FileEditor {
                                 d.child(button(&t, "blame-mr", &label, false).on_click(
                                     cx.listener(move |this, _, _, cx| {
                                         this.blame_pop = false;
-                                        cx.emit(Event::OpenMr(row.clone()));
+                                        cx.emit(Event::OpenMr(Box::new(row.clone())));
                                     }),
                                 ))
                             })
