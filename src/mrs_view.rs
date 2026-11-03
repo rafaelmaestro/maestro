@@ -135,6 +135,8 @@ pub struct MrsView {
     theme: Theme,
     anchors: Anchors,
     _poll: Task<()>,
+    /// uma volta da revisão automática rodando (uma por vez)
+    ai_busy: bool,
 }
 
 impl EventEmitter<Event> for MrsView {}
@@ -279,6 +281,7 @@ impl MrsView {
             theme,
             anchors,
             _poll: poll,
+            ai_busy: false,
         }
     }
 
@@ -314,6 +317,23 @@ impl MrsView {
         })
     }
 
+    fn ai_tick(&mut self, rows: Vec<Row>, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            let out = cx
+                .background_executor()
+                .spawn(async move { crate::ai_review::tick(&rows) })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.ai_busy = false;
+                if let Some((key, text)) = out {
+                    cx.emit(Event::Notify(text, key));
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn refresh(&mut self, cx: &mut Context<Self>) {
         let me = self.me.clone();
         cx.spawn(async move |this, cx| {
@@ -338,6 +358,12 @@ impl MrsView {
                     watch.push(r.clone());
                 }
             }
+            let mut ai_rows: Vec<Row> = Vec::new();
+            for r in lists[0].iter().chain(&lists[2]).flatten() {
+                if !ai_rows.iter().any(|w| w.key() == r.key()) {
+                    ai_rows.push(r.clone());
+                }
+            }
             let fresh_review = lists[0].as_ref().ok().cloned();
             let mine = lists[1].as_ref().ok().cloned();
             let _ = this.update(cx, |this, cx| {
@@ -350,6 +376,10 @@ impl MrsView {
                 }
                 if let (Some(v), false) = (mine, me_name.is_empty()) {
                     cx.emit(Event::Mine(me_name.clone(), v));
+                }
+                if !this.ai_busy && !ai_rows.is_empty() {
+                    this.ai_busy = true;
+                    this.ai_tick(ai_rows, cx);
                 }
                 cx.notify();
             });
