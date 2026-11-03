@@ -647,7 +647,7 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
             }
             Err(err) => {
                 e.why = format!("não consegui aprovar: {err}");
-                Some(e.why.clone())
+                Some("não consegui aprovar".to_string())
             }
         },
         Action::Comment(f, why) => {
@@ -675,7 +675,7 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
                 .map_err(Clone::clone)
                 .and_then(|o| mrs::publish(&r.path, r.iid, o, &mut drafts));
             e.posted = drafts.iter().filter(|d| d.gitlab_id.is_some()).count();
-            e.why = match posted {
+            e.why = match &posted {
                 Ok(()) => format!(
                     "{} comentário{} publicado{} · {why}",
                     e.posted,
@@ -684,11 +684,24 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
                 ),
                 Err(err) => format!("comentários não saíram ({err}) · {why}"),
             };
-            Some(e.why.clone())
+            let head = if rep.verdict == "changes" {
+                "pediu mudanças"
+            } else {
+                "revise você"
+            };
+            Some(match &posted {
+                Ok(()) => format!("{head} · {}", e.why.split(" · ").next().unwrap_or_default()),
+                Err(_) => format!("{head} · comentários não saíram"),
+            })
         }
         Action::Human(why) => {
+            let short = if why.chars().count() <= 60 {
+                format!("revise você · {why}")
+            } else {
+                "revise você".into()
+            };
             e.why = why;
-            Some(e.why.clone())
+            Some(short)
         }
     };
     e.report = Some(rep);
@@ -696,7 +709,7 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
     e.at = now;
     st.save();
     (
-        notice.map(|n| (key, format!("{} !{}: revise você — {n}", r.proj(), r.iid))),
+        notice.map(|n| (key, format!("{} !{} · {n}", r.proj(), r.iid))),
         true,
     )
 }

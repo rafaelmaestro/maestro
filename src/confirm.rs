@@ -221,7 +221,8 @@ pub fn toast(t: &Theme, msg: &str) -> Div {
         .rounded(px(6.))
         .shadow_lg()
         .text_size(px(13.5))
-        .child(msg.to_string())
+        .max_w(px(720.))
+        .child(div().flex_1().min_w_0().child(msg.to_string()))
 }
 
 /// O `mergeDlg` do protótipo: opções que vêm do MR; com o pipeline rodando, só dá para agendar.

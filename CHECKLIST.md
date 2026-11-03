@@ -393,6 +393,8 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] Pill "⟳ revisando" em todas as abas; fila encadeia o próximo assim que uma revisão acaba
 - [x] Revisão que falhou espera 1 h antes de tentar de novo; worktree com .git quebrado é refeita
 
+- [x] Notificação curta ("proj !iid · revise você · N comentários publicados"); toast com largura máxima e quebra de linha
+
 ## Backlog (não entra sem decisão)
 
 - Conflitos entre features (ripwire branch conflicts)
