@@ -388,7 +388,7 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] Teste no app (sessão `maestro-test`, glab que recusa `-X`, estado de exemplo com MRs reais, revisão automática pausada)
 - [ ] Primeira aprovação real com o Rafael olhando (`enabled: true` no `~/.config/maestro/ai-review.json` + `read_only_connections`)
 
-- [x] Comenta sozinha sempre que há achado que passa na barra, mesmo quando pede revisão manual
+- [x] Comenta sozinha sempre que há achado que passa na barra, mesmo quando pede revisão manual, sem limite de quantidade
 - [x] Botão "Revisar agora" (roda o próximo da fila na hora, mesmo pausada) e "⟳ revisando proj !iid" na barra
 - [x] Pill "⟳ revisando" em todas as abas; fila encadeia o próximo assim que uma revisão acaba
 - [x] Revisão que falhou espera 1 h antes de tentar de novo; worktree com .git quebrado é refeita

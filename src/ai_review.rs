@@ -476,7 +476,6 @@ pub fn decide(f: &Facts) -> Action {
                 matches!(x.severity.as_str(), "blocker" | "major")
                     || (x.severity == "minor" && matches!(x.category.as_str(), "sec" | "contract"))
             })
-            .take(3)
             .cloned()
             .collect();
         if !c.is_empty() {
