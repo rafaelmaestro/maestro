@@ -367,6 +367,22 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] Pipe verde tira do draft na hora, sem esperar o revisor (os bots de IA só comentam fora do draft); `/mr` também espera o verde e tira
 - Desvios: o artifact do protótipo não foi republicado (o local tem o card e o fluxo simulado); o revisor usa a mesma rubrica do "Revisão Claude", escrita para MR de outra pessoa; o nome do agente (`description` no Agent, reaproveitado via ListAgents/SendMessage) só foi testado com um `cat` no lugar do Claude
 
+## Revisor IA
+
+- [x] Protótipo: aba "IA" no MRs (aprovado pela IA, revise você, pediu mudanças, na fila, revisando, pulado), gasto do dia e Pausar, relatório com checks por dimensão e afirmações de produção conferidas no banco; artifact republicado
+- [x] Aprovação do protótipo pelo Rafael (devops = prefixo `ctbz/devops/`)
+- [ ] Skill do revisor no repo (`include_str!`): injeção no texto do MR, subagente por dimensão + passada adversarial, claims de produção, `.gitlab/duo/mr-review-instructions.yaml`; a rubrica do `~/.claude` vira só regra de tom do comentário
+- [ ] SCHEMA com `verdict`, `confidence`, `summary`, `checks`, `claims`, `category`; parse com default (fixture antigo continua passando)
+- [ ] `claude_args`: subagente (nome conferido num smoke run), teto ~US$ 4, dbx só com conexão em `read_only_connections`
+- [ ] Gaveta manual mostra veredito, checks e claims
+- [ ] Config `[ai_review]` e estado `ai-review.json` (fora do `mark_seen`)
+- [ ] Quem você segue no GitLab (`users/:id/following`), relido a cada hora
+- [ ] Fila automática: reviewer + grupo, sha nova, CI verde, fora de draft, teto diário, uma por vez, lock por worktree
+- [ ] `may_approve` em Rust: veredito, confiança, sem blocker/major, claims confirmados, sha revisada, sem unapprove seu, fora de `never_approve`, autor seguido
+- [ ] `changes` + `auto_comment`: publica achados dentro do diff numa review só; resto em rascunho
+- [ ] Aba "IA" no app; "revise você" também em Para revisar; notificação
+- [ ] Teste no app (sessão `maestro-test`, glab falso) e primeira aprovação real com o Rafael olhando
+
 ## Backlog (não entra sem decisão)
 
 - Conflitos entre features (ripwire branch conflicts)

@@ -341,6 +341,10 @@ legend{color:var(--muted);font-size:12px;padding:0 4px}
 .find .loc{font:12px var(--mono);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .find .warnl{color:var(--orange);font-size:12px}
 .find p{margin:0;grid-column:2}
+.aibar{gap:4px 12px;font-size:12px}
+.find>.sev{align-self:start}
+.list.ai .row{grid-template-columns:14px minmax(150px,220px) minmax(0,1fr) 120px 70px 160px}
+.row .aiwhy{grid-column:1/-1;font-size:11.5px;padding-left:22px}
 
 /* mascote (sprites de claude-mascot/overlay/poses.py) */
 .mascot{position:absolute;right:22px;bottom:58px;z-index:25;display:flex;align-items:flex-end;gap:10px;cursor:pointer;animation:walkin .9s steps(6) both}
@@ -818,13 +822,15 @@ function sh(f,t,cmd){
 FEATS.forEach(f=>{ mkTabs(f); if(f.kind==='ws') sh(f,0,'ls'); else sh(f,1,'git status'); });
 
 const MRS = [
-  {g:'rev', proj:'bots-api', path:'ctbz/experts/bots/bots-api', iid:124, title:'feat: retry no webhook', desc:'## O que muda\n- \`Handler.run\` tenta de novo quando o webhook responde erro, em vez de lançar na hora.\n- Novo \`src/retry.ts\` com o número de tentativas configurável.\n\n## Como testar\n- \`npm test -- handler\`\n- Derrube o endpoint do bot e veja 3 tentativas no log.', who:'@bruno.costa', ci:'success', st:'new', unread:true, src:'feat/retry-webhook', tgt:'main', sha:'9e41c07', approvals:1, squash:true, rmSrc:true},
-  {g:'rev', proj:'zendesk-agents', path:'ctbz/experts/atendimento/zendesk-agents', iid:88, title:'fix: timeout na sincronização de tickets', who:'@carla.dias', ci:'running', st:'inc', inc:2, sha:'a2f9c1e', approvals:0, squash:false, rmSrc:true},
-  {g:'rev', proj:'atendimento-canais', path:'ctbz/experts/atendimento/atendimento-canais', iid:301, title:'chore: atualiza dependências', who:'@diego.alves', ci:'failed', st:'done', sha:'51bb0d2', approvals:0, approved:true},
+  {g:'rev', proj:'bots-api', path:'ctbz/experts/bots/bots-api', iid:124, title:'feat: retry no webhook', desc:'## O que muda\n- \`Handler.run\` tenta de novo quando o webhook responde erro, em vez de lançar na hora.\n- Novo \`src/retry.ts\` com o número de tentativas configurável.\n\n## Como testar\n- \`npm test -- handler\`\n- Derrube o endpoint do bot e veja 3 tentativas no log.', who:'@bruno.costa', ci:'success', st:'new', unread:true, src:'feat/retry-webhook', tgt:'main', sha:'9e41c07', approvals:1, squash:true, rmSrc:true, ai:{v:'human',why:'“3% dos webhooks falham” não bate com o banco',conf:.62,cost:2.9,fol:true,chk:{tests:'?'},claims:[{c:'3% das chamadas ao webhook falham hoje',st:'refuted',q:'select count(*) filter (where status>=500)::float/count(*) from webhook_calls where created_at>now()-interval \'7 days\'',r:'0,4% (812 de 203 117) nos últimos 7 dias'}]}},
+  {g:'rev', proj:'zendesk-agents', path:'ctbz/experts/atendimento/zendesk-agents', iid:88, title:'fix: timeout na sincronização de tickets', who:'@carla.dias', ci:'running', st:'inc', inc:2, sha:'a2f9c1e', approvals:0, squash:false, rmSrc:true, ai:{v:'queue',why:'esperando o CI ficar verde'}},
+  {g:'rev', proj:'atendimento-canais', path:'ctbz/experts/atendimento/atendimento-canais', iid:301, title:'chore: atualiza dependências', who:'@diego.alves', ci:'failed', st:'done', sha:'51bb0d2', approvals:0, approved:true, ai:{v:'approve',why:'8 de 8 checks ok',conf:.93,cost:1.8,fol:true}},
   {g:'mine', proj:'bots-api', path:'ctbz/experts/bots/bots-api', iid:119, title:'refactor: extrai SlackClient', who:'você', ci:'success', st:'threads', threads:2, reply:'@ana.lima'},
-  {g:'grp', proj:'agenda-api', path:'ctbz/experts/agenda-api', iid:42, title:'feat: endpoint de reagendamento', who:'@elisa.rocha', ci:'success', st:'none'},
-  {g:'grp', proj:'notas-fiscais', path:'ctbz/experts/notas-fiscais', iid:1207, title:'fix: arredondamento do ISS', who:'@fabio.nunes', ci:'success', st:'none'},
-  {g:'grp', proj:'onboarding-web', path:'ctbz/experts/onboarding-web', iid:388, title:'feat: etapa de certificado digital', who:'@heitor.mota', ci:'failed', st:'none'},
+  {g:'grp', proj:'agenda-api', path:'ctbz/experts/agenda-api', iid:42, title:'feat: endpoint de reagendamento', who:'@elisa.rocha', ci:'success', st:'none', ai:{v:'changes',why:'2 comentários publicados · não aprova: você não segue @elisa.rocha',conf:.81,cost:3.1,posted:2,chk:{correct:'✗',contract:'✗'},find:[{sev:'major',file:'src/reschedule.ts',line:31,body:'issue: reagendar duas vezes o mesmo horário cria dois eventos; o retry do cliente faz isso.'},{sev:'minor',file:'src/reschedule.ts',line:48,body:'question: `slotId` some da resposta. O app ainda lê esse campo?'}]}},
+  {g:'grp', proj:'notas-fiscais', path:'ctbz/experts/notas-fiscais', iid:1207, title:'fix: arredondamento do ISS', who:'@fabio.nunes', ci:'success', st:'none', approved:true, ai:{v:'approve',why:'8 de 8 checks ok · claim confirmado no banco',conf:.88,cost:2.4,fol:true,claims:[{c:'só 12 notas têm ISS com 3 casas',st:'confirmed',q:'select count(*) from notas where iss_valor <> round(iss_valor,2)',r:'12'}]}},
+  {g:'grp', proj:'infra-terraform', path:'ctbz/experts/devops/infra-terraform', iid:77, title:'chore: sobe o node pool', who:'@bruno.costa', ci:'success', st:'none', ai:{v:'human',why:'repo de devops: nunca aprova sozinho',conf:.9,cost:1.2,fol:true}},
+  {g:'grp', proj:'agenda-api', path:'ctbz/experts/agenda-api', iid:43, title:'fix: fuso no reagendamento', who:'@elisa.rocha', ci:'success', st:'none', ai:{v:'run',why:'Read src/tz.ts'}},
+  {g:'grp', proj:'onboarding-web', path:'ctbz/experts/onboarding-web', iid:388, title:'feat: etapa de certificado digital', who:'@heitor.mota', ci:'failed', st:'none', ai:{v:'skip',why:'pipeline falhou'}},
 ];
 const D_MR = [
   {path:'src/handler.ts', hunks:[{h:'@@ -9,6 +10,9 @@ export class Handler {', l:[
@@ -1550,12 +1556,15 @@ function discardAll(ctx){ const pend=S.drafts.filter(d=>d.ctx===ctx&&(d.state===
 function undo(){ const g=S.undo.pop(); if(!g){ toast('Nada para desfazer'); return; } g.sort((a,b)=>a[1]-b[1]).forEach(([d,i])=>S.drafts.splice(i,0,d)); rerender(); toast('Desfeito'); }
 
 /* ---------- MRs ---------- */
-const GROUPS={rev:'Para revisar',done:'Revisados',mine:'Meus',grp:'ctbz/experts'};
+const GROUPS={rev:'Para revisar',done:'Revisados',mine:'Meus',grp:'ctbz/experts',ai:'IA'};
+const AIP={approve:['ok','aprovado pela IA'],human:['inc','revise você'],changes:['bad','pediu mudanças'],queue:['','na fila'],run:['','⟳ revisando'],skip:['','pulado']};
+const aiPill=m=>{ const [c,t]=AIP[m.ai.v]; return `<span class="pill ${c}" title="${esc(m.ai.why)}">${t}${m.ai.v==='changes'?' · '+m.ai.posted:''}</span>`; };
+const AIDIM=[['correct','Correção'],['sec','Segurança'],['read','Legibilidade'],['perf','Performance'],['tests','Testes'],['contract','Contrato e dados'],['desc','Descrição × diff'],['inject','Injeção no texto do MR']];
 const ciTxt=c=>({success:'✓ CI',running:'⟳ CI',failed:'✗ CI',none:'– sem CI'}[c]);
 const isReviewed=m=>!!(S.reviewed[m.proj+m.iid]||m.st==='done'||m.approved);
-const inGroup=(m,g)=>g==='rev'?m.g==='rev'&&!isReviewed(m):g==='done'?m.g==='rev'&&isReviewed(m):m.g===g;
+const inGroup=(m,g)=>g==='ai'?!!m.ai:g==='rev'?m.g==='rev'&&!isReviewed(m):g==='done'?m.g==='rev'&&isReviewed(m):m.g===g;
 function inboxRows(){ const q=S.q.toLowerCase(); return MRS.filter(m=>inGroup(m,S.ibox)&&(!q||(m.proj+' '+m.title+' '+m.who+' !'+m.iid).toLowerCase().includes(q))); }
-function stPill(m){ if(m.merged) return '<span class="pill ok">mergeado</span>';
+function stPill(m){ if(S.ibox==='ai'&&m.ai) return aiPill(m); if(m.ai&&m.ai.v==='human'&&!isReviewed(m)) return aiPill(m); if(m.merged) return '<span class="pill ok">mergeado</span>';
   if(m.reply) return `<span class="pill inc" title="${m.reply} respondeu a uma thread sua">nova resposta</span>`;
   if(m.approved) return '<span class="pill ok">aprovado</span>';
   if(S.reviewed[m.proj+m.iid]) return '<span class="pill">revisado</span>';
@@ -1563,11 +1572,12 @@ function stPill(m){ if(m.merged) return '<span class="pill ok">mergeado</span>';
 function dotOf(m){ if(m.reply) return `<span class="unread rep" title="nova resposta de ${m.reply}"></span>`; return m.unread&&!isReviewed(m)?'<span class="unread" title="MR novo"></span>':''; }
 function renderInbox(el){
   const rows=inboxRows(); S.isel=Math.min(S.isel,Math.max(rows.length-1,0));
-  el.innerHTML=`<div class="ibar"><div class="seg">${Object.entries(GROUPS).map(([k,v])=>`<button aria-pressed="${S.ibox===k}" data-g="${k}">${v}<span class="count">${MRS.filter(m=>inGroup(m,k)).length}</span></button>`).join('')}</div><span class="sp"></span><button class="btn" id="iRf" title="A inbox relê sozinha a cada 60 s (R)">↻</button><input id="iq" placeholder="filtrar  ( / )" value="${esc(S.q)}" aria-label="Filtrar MRs"></div>`+
-    (rows.length?'<div class="list">'+rows.map((m,i)=>`<div class="row ${i===S.isel?'on':''}" data-i="${i}"><span class="uw">${dotOf(m)}</span><span class="proj">${m.proj} <span class="muted">!${m.iid}</span></span><span class="t">${esc(m.title)}</span><span class="who">${m.who}</span><span class="ci ${m.ci}">${ciTxt(m.ci)}</span>${stPill(m)}</div>`).join('')+'</div>'
-     :S.q?`<div class="empty"><h3>Nenhum MR bate com “${esc(S.q)}”</h3><p><kbd>Esc</kbd> limpa o filtro.</p></div>`:`<div class="empty"><h3>Nada aqui</h3><p>${S.ibox==='done'?'MRs que você já revisou ou aprovou aparecem aqui.':'Nenhum MR nesta aba.'}</p></div>`);
+  el.innerHTML=`<div class="ibar"><div class="seg">${Object.entries(GROUPS).map(([k,v])=>`<button aria-pressed="${S.ibox===k}" data-g="${k}">${v}<span class="count">${MRS.filter(m=>inGroup(m,k)).length}</span></button>`).join('')}</div><span class="sp"></span><button class="btn" id="iRf" title="A inbox relê sozinha a cada 60 s (R)">↻</button><input id="iq" placeholder="filtrar  ( / )" value="${esc(S.q)}" aria-label="Filtrar MRs"></div>`+(S.ibox==='ai'?`<div class="ibar aibar"><span class="mono">${S.aiOff?'⏸ pausada':'● automática'} · hoje US$ 7,40 / 20</span><span class="muted">Aprova sozinha os MRs de quem você segue no GitLab, fora repos de devops. Quem você não segue recebe comentários quando precisa, nunca aprovação.</span><span class="sp"></span><button class="btn" id="aiP">${S.aiOff?'Retomar':'Pausar'}</button></div>`:'')+
+    (rows.length?`<div class="list${S.ibox==='ai'?' ai':''}">`+rows.map((m,i)=>`<div class="row ${i===S.isel?'on':''}" data-i="${i}"><span class="uw">${dotOf(m)}</span><span class="proj">${m.proj} <span class="muted">!${m.iid}</span></span><span class="t">${esc(m.title)}</span><span class="who">${m.who}</span><span class="ci ${m.ci}">${ciTxt(m.ci)}</span>${stPill(m)}${S.ibox==='ai'?`<span class="muted aiwhy">${esc(m.ai.why)}</span>`:''}</div>`).join('')+'</div>'
+     :S.q?`<div class="empty"><h3>Nenhum MR bate com “${esc(S.q)}”</h3><p><kbd>Esc</kbd> limpa o filtro.</p></div>`:`<div class="empty"><h3>Nada aqui</h3><p>${S.ibox==='done'?'MRs que você já revisou ou aprovou aparecem aqui.':S.ibox==='ai'?'MRs em que você é reviewer e os do grupo aparecem aqui quando a IA revisa.':'Nenhum MR nesta aba.'}</p></div>`);
   el.querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{ S.ibox=b.dataset.g; S.isel=0; renderInbox(el); });
-  el.querySelectorAll('.row').forEach(r=>{ r.onclick=()=>{ S.isel=+r.dataset.i; renderInbox(el); }; r.ondblclick=()=>openMR(rows[+r.dataset.i]); });
+  el.querySelectorAll('.row').forEach(r=>{ r.onclick=()=>{ S.isel=+r.dataset.i; renderInbox(el); }; r.ondblclick=()=>S.ibox==='ai'?aiReport(rows[+r.dataset.i]):openMR(rows[+r.dataset.i]); });
+  if($('#aiP')) $('#aiP').onclick=()=>{ S.aiOff=!S.aiOff; renderInbox(el); toast(S.aiOff?'Revisão automática pausada':'Revisão automática retomada'); };
   $('#iRf').onclick=()=>toast('Inbox atualizada');
   $('#iq').oninput=e=>{ S.q=e.target.value; S.isel=0; const p=e.target.selectionStart; renderInbox(el); const i=$('#iq'); i.focus(); i.setSelectionRange(p,p); };
 }
@@ -1668,7 +1678,14 @@ function renderDrawer(){
   let o=$('#drawerSlot'); if(!o){ o=document.createElement('div'); o.id='drawerSlot'; $('#app').appendChild(o); }
   if(!RV){ o.innerHTML=''; renderStatus(); return; }
   const m=RV.mr; let body,foot;
-  if(RV.phase==='setup'){ body=`<fieldset><legend>Escopo</legend><label><input type="radio" name="sc" checked> MR inteiro</label><label class="${m.st==='inc'?'':'off'}"><input type="radio" name="sc" ${m.st==='inc'?'':'disabled'}> Só commits novos desde a última revisão</label></fieldset>
+  if(RV.phase==='ai'){ const a=m.ai, [c,t]=AIP[a.v], chk=a.chk||{};
+    body=`<div class="loc mono"><span class="pill ${c}">${t}</span> <span class="muted">confiança ${Math.round((a.conf||0)*100)}% · US$ ${(a.cost||0).toFixed(2)} · ${m.sha||''}</span></div><p style="margin:0">${esc(a.why)}</p>
+      <fieldset><legend>Checks</legend><div class="steps">${AIDIM.map(([k,n])=>{ const s=chk[k]||'✓'; return `<span class="${s==='✓'?'ok':s==='?'?'run':'bad'}">${s} ${n}</span>`; }).join('')}</div></fieldset>
+      ${a.claims?`<fieldset><legend>Afirmações sobre produção</legend>${a.claims.map(x=>`<div class="find"><span class="sev ${x.st==='confirmed'?'nit':'major'}">${x.st==='confirmed'?'confirmado':'não bate'}</span><div><p>${esc(x.c)}</p><pre class="mono muted" style="white-space:pre-wrap;margin:4px 0">${esc(x.q)}</pre><p>→ ${esc(x.r)}</p></div></div>`).join('')}</fieldset>`:''}
+      ${a.find?`<fieldset><legend>Comentários ${a.posted?'publicados':'em rascunho'}</legend>${a.find.map(x=>`<div class="find"><span class="sev ${x.sev}">${x.sev}</span><div><div class="loc">${x.file}:${x.line}</div><p>${md(x.body)}</p></div></div>`).join('')}</fieldset>`:''}
+      <p class="muted" style="margin:0">${a.v==='approve'?'A IA aprovou esta sha sozinha. Desaprovar no GitLab impede que ela aprove de novo.':a.v==='human'?'A IA não aprova: abra o MR e decida você.':'A IA não aprova MR com achado major ou blocker.'}</p>`;
+    foot=`<button class="btn" id="rvX">Fechar</button><button class="btn pri" id="rvOpen">Abrir MR</button>`; }
+  else if(RV.phase==='setup'){ body=`<fieldset><legend>Escopo</legend><label><input type="radio" name="sc" checked> MR inteiro</label><label class="${m.st==='inc'?'':'off'}"><input type="radio" name="sc" ${m.st==='inc'?'':'disabled'}> Só commits novos desde a última revisão</label></fieldset>
       <fieldset><legend>Contexto enviado</legend><div class="steps"><span>· descrição do MR e ${THREADS.length} thread existente (dedup)</span><span>· rubrica ~/.claude/mr-review-rubric.md</span><span>· CLAUDE.md e skills do repo</span></div></fieldset><p class="muted" style="margin:0">Os achados viram rascunhos. Nada é publicado sem você.</p>`;
     foot=`<button class="btn" id="rvX">Cancelar</button><button class="btn pri" id="rvGo">Iniciar revisão</button>`; }
   else if(RV.phase==='run'){ body=`<div class="steps">${RV.steps.map(s=>`<span class="${s.k}">${s.k==='ok'?'✓':s.k==='run'?'⟳':'↳'} ${esc(s.t)}</span>`).join('')}</div>`; foot=`<button class="btn danger" id="rvStop">Parar</button>`; }
@@ -1678,10 +1695,11 @@ function renderDrawer(){
   setTimeout(()=>armDrawer(o.querySelector('.drawer')));
   o.innerHTML=`<div class="drawer" role="dialog" aria-label="Revisão Claude"><div class="dh"><b>Revisão Claude</b><span class="mono muted">${m.proj} !${m.iid}</span><span class="sp"></span><button id="rvC" aria-label="Fechar">×</button></div><div class="db">${body}</div><div class="df">${foot}</div></div>`;
   const b=(id,fn)=>{ const e=document.getElementById(id); if(e) e.onclick=fn; };
-  b('rvC',closeDrawer); b('rvX',closeDrawer); b('rvGo',runReview); b('rvStop',closeDrawer); b('rvMk',makeDrafts);
+  b('rvC',closeDrawer); b('rvX',closeDrawer); b('rvOpen',()=>{ const mm=RV.mr; closeDrawer(); openMR(mm); }); b('rvGo',runReview); b('rvStop',closeDrawer); b('rvMk',makeDrafts);
   o.querySelectorAll('[data-fi]').forEach(c=>c.onchange=()=>{ RV.f[+c.dataset.fi].on=c.checked; renderDrawer(); });
   renderStatus();
 }
+function aiReport(m){ if(!m||!m.ai) return; if(m.ai.v==='queue'||m.ai.v==='run'||m.ai.v==='skip'){ toast(`${m.proj} !${m.iid}: ${m.ai.why}`); return; } RV={mr:m,phase:'ai',steps:[]}; renderDrawer(); }
 function closeDrawer(){ rvT.forEach(clearTimeout); rvT=[]; RV=null; renderDrawer(); }
 function runReview(){
   RV.phase='run'; renderDrawer();
@@ -2718,7 +2736,7 @@ document.addEventListener('keydown',e=>{
   if(S.mode==='mrs'){ const rows=inboxRows();
     if(k==='j'||k==='ArrowDown'){ e.preventDefault(); S.isel=Math.min(S.isel+1,rows.length-1); renderCenter(); }
     else if(k==='k'||k==='ArrowUp'){ e.preventDefault(); S.isel=Math.max(S.isel-1,0); renderCenter(); }
-    else if(k==='Enter') openMR(rows[S.isel]);
+    else if(k==='Enter') S.ibox==='ai'?aiReport(rows[S.isel]):openMR(rows[S.isel]);
     else if(k==='o'&&rows[S.isel]) openGitlab(rows[S.isel]);
     else if(k==='/'){ e.preventDefault(); $('#iq').focus(); }
     return; }
