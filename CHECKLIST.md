@@ -397,6 +397,8 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 
 - [x] Por MR na aba IA: "Revisar agora" (A), mesmo já revisado, em draft ou com CI vermelho; "Pular" (X) some até commit novo
 
+- [x] "Abrir no GitLab" na linha selecionada da aba IA
+
 ## Backlog (não entra sem decisão)
 
 - Conflitos entre features (ripwire branch conflicts)

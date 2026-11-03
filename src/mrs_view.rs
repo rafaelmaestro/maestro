@@ -1763,7 +1763,8 @@ impl MrsView {
                                                         .child(w),
                                                 )
                                                 .when(sel_ai, |d| {
-                                                    let (a, b) = (r.clone(), r.clone());
+                                                    let (a, b, g) =
+                                                        (r.clone(), r.clone(), r.clone());
                                                     d.child(
                                                         button(
                                                             &t,
@@ -1787,6 +1788,19 @@ impl MrsView {
                                                         .on_click(cx.listener(
                                                             move |this, _, _, cx| {
                                                                 this.ai_skip_row(b.clone(), cx)
+                                                            },
+                                                        )),
+                                                    )
+                                                    .child(
+                                                        button(
+                                                            &t,
+                                                            ("ai-row-gl", i),
+                                                            "Abrir no GitLab",
+                                                            false,
+                                                        )
+                                                        .on_click(cx.listener(
+                                                            move |this, _, _, _| {
+                                                                this.open_gitlab(&g)
                                                             },
                                                         )),
                                                     )
