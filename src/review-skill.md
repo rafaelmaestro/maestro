@@ -85,7 +85,8 @@ frase sobre o MR e o porquê do veredito. `checks` tem exatamente as dimensões 
 ## 6. Barra para virar comentário
 
 O relatório leva tudo; o comentário, não. Um achado só vale como comentário no MR se for
-`blocker` ou `major`, ou um `minor` de `sec`/`contract`. No máximo 3, os que mais doem. O
+`blocker` ou `major`, ou um `minor` de `sec`/`contract`. Não há limite de quantidade: todo achado
+que passa nessa barra vira comentário, mesmo que uma regra de tom abaixo diga outra coisa. O
 `body` segue Conventional Comments (`issue:`, `question:`, `suggestion (não-bloqueante):`),
 fala do código e não da pessoa, cita o efeito concreto e começa pelo label. Não escreva que
 é IA, não mencione ferramenta nem este processo, sem saudação nem resumo.

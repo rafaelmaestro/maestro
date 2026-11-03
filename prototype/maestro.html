@@ -344,7 +344,8 @@ legend{color:var(--muted);font-size:12px;padding:0 4px}
 .aibar{gap:4px 12px;font-size:12px}
 .find>.sev{align-self:start}
 .list.ai .row{grid-template-columns:14px minmax(150px,220px) minmax(0,1fr) 120px 70px 160px}
-.row .aiwhy{grid-column:1/-1;font-size:11.5px;padding-left:22px}
+.row .aiwhy{grid-column:1/-1;font-size:11.5px;padding-left:22px;display:flex;gap:8px;align-items:center}
+.row .aiwhy .btn{font-size:11.5px;padding:1px 8px}
 
 /* mascote (sprites de claude-mascot/overlay/poses.py) */
 .mascot{position:absolute;right:22px;bottom:58px;z-index:25;display:flex;align-items:flex-end;gap:10px;cursor:pointer;animation:walkin .9s steps(6) both}
@@ -1573,10 +1574,12 @@ function dotOf(m){ if(m.reply) return `<span class="unread rep" title="nova resp
 function renderInbox(el){
   const rows=inboxRows(); S.isel=Math.min(S.isel,Math.max(rows.length-1,0));
   el.innerHTML=`<div class="ibar"><div class="seg">${Object.entries(GROUPS).map(([k,v])=>`<button aria-pressed="${S.ibox===k}" data-g="${k}">${v}<span class="count">${MRS.filter(m=>inGroup(m,k)).length}</span></button>`).join('')}</div><span class="sp"></span><button class="btn" id="iRf" title="A inbox relê sozinha a cada 60 s (R)">↻</button><input id="iq" placeholder="filtrar  ( / )" value="${esc(S.q)}" aria-label="Filtrar MRs"></div>`+(S.ibox==='ai'?`<div class="ibar aibar"><span class="mono">${S.aiOff?'⏸ pausada':'● automática'} · hoje US$ 7,40 / 20</span>${(r=>r?`<span class="mono" style="color:var(--accent)" title="${esc(r.title)}">⟳ revisando ${esc(r.proj)} !${r.iid}</span>`:'')(MRS.find(m=>m.ai&&m.ai.v==='run'))}<span class="muted">Aprova sozinha os MRs de quem você segue no GitLab, fora repos de devops. Comenta sozinha quando acha problema; quem você não segue nunca recebe aprovação.</span><span class="sp"></span><button class="btn" id="aiNow" title="Roda o próximo da fila já, mesmo pausada">Revisar agora</button><button class="btn" id="aiP">${S.aiOff?'Retomar':'Pausar'}</button></div>`:'')+
-    (rows.length?`<div class="list${S.ibox==='ai'?' ai':''}">`+rows.map((m,i)=>`<div class="row ${i===S.isel?'on':''}" data-i="${i}"><span class="uw">${dotOf(m)}</span><span class="proj">${m.proj} <span class="muted">!${m.iid}</span></span><span class="t">${esc(m.title)}</span><span class="who">${m.who}</span><span class="ci ${m.ci}">${ciTxt(m.ci)}</span>${stPill(m)}${S.ibox==='ai'?`<span class="muted aiwhy">${esc(m.ai.why)}</span>`:''}</div>`).join('')+'</div>'
+    (rows.length?`<div class="list${S.ibox==='ai'?' ai':''}">`+rows.map((m,i)=>`<div class="row ${i===S.isel?'on':''}" data-i="${i}"><span class="uw">${dotOf(m)}</span><span class="proj">${m.proj} <span class="muted">!${m.iid}</span></span><span class="t">${esc(m.title)}</span><span class="who">${m.who}</span><span class="ci ${m.ci}">${ciTxt(m.ci)}</span>${stPill(m)}${S.ibox==='ai'?`<span class="muted aiwhy"><span>${esc(m.ai.why)}</span>${i===S.isel?`<span class="sp"></span><button class="btn" data-now="${i}" title="Revisa este MR agora, mesmo em draft ou com CI vermelho (A)">Revisar agora</button><button class="btn" data-skip="${i}" title="Some da aba até o MR receber commit novo (X)">Pular</button>`:''}</span>`:''}</div>`).join('')+'</div>'
      :S.q?`<div class="empty"><h3>Nenhum MR bate com “${esc(S.q)}”</h3><p><kbd>Esc</kbd> limpa o filtro.</p></div>`:`<div class="empty"><h3>Nada aqui</h3><p>${S.ibox==='done'?'MRs que você já revisou ou aprovou aparecem aqui.':S.ibox==='ai'?'MRs em que você é reviewer e os do grupo aparecem aqui quando a IA revisa.':'Nenhum MR nesta aba.'}</p></div>`);
   el.querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{ S.ibox=b.dataset.g; S.isel=0; renderInbox(el); });
   el.querySelectorAll('.row').forEach(r=>{ r.onclick=()=>{ S.isel=+r.dataset.i; renderInbox(el); }; r.ondblclick=()=>S.ibox==='ai'?aiReport(rows[+r.dataset.i]):openMR(rows[+r.dataset.i]); });
+  el.querySelectorAll('[data-now]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); const m=rows[+b.dataset.now]; m.ai.v='run'; m.ai.why='revisando'; renderInbox(el); toast(`Revisando ${m.proj} !${m.iid} agora`); });
+  el.querySelectorAll('[data-skip]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); const m=rows[+b.dataset.skip]; delete m.ai; renderInbox(el); toast(`${m.proj} !${m.iid} pulado até o próximo commit`); });
   if($('#aiNow')) $('#aiNow').onclick=()=>{ const r=MRS.find(m=>m.ai&&m.ai.v==='run'); toast(r?`Já revisando ${r.proj} !${r.iid}`:'Revisando o próximo da fila'); };
   if($('#aiP')) $('#aiP').onclick=()=>{ S.aiOff=!S.aiOff; renderInbox(el); toast(S.aiOff?'Revisão automática pausada':'Revisão automática retomada'); };
   $('#iRf').onclick=()=>toast('Inbox atualizada');

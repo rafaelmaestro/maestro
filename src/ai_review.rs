@@ -340,7 +340,7 @@ impl Entry {
         match self.status.as_str() {
             "run" => ("", "⟳ revisando".into()),
             "queue" => ("", "na fila".into()),
-            "skip" => ("", "pulado".into()),
+            "skip" | "ignored" => ("", "pulado".into()),
             _ if self.approved_sha.as_deref() == Some(self.sha.as_str()) => {
                 ("ok", "aprovado pela IA".into())
             }
@@ -476,7 +476,6 @@ pub fn decide(f: &Facts) -> Action {
                 matches!(x.severity.as_str(), "blocker" | "major")
                     || (x.severity == "minor" && matches!(x.category.as_str(), "sec" | "contract"))
             })
-            .take(3)
             .cloned()
             .collect();
         if !c.is_empty() {
@@ -496,6 +495,13 @@ fn following() -> Result<Vec<String>, String> {
         .collect())
 }
 
+/// "Pular": some da aba IA até o MR receber commit novo.
+pub fn ignore(key: &str, sha: &str) {
+    let mut st = State::load();
+    set(&mut st, key, sha, "ignored", "pulado por você");
+    st.save();
+}
+
 const FAILED: &str = "revisão falhou: ";
 
 fn set(st: &mut State, key: &str, sha: &str, status: &str, why: &str) {
@@ -512,8 +518,9 @@ fn set(st: &mut State, key: &str, sha: &str, status: &str, why: &str) {
 }
 
 /// Atualiza o estado de todos e escolhe o próximo MR a revisar (já salvo como `run`).
-/// `force` roda mesmo com a fila pausada (o botão "Revisar agora").
-pub fn next(rows: &[Row], force: bool) -> Option<(Row, Value)> {
+/// `force` roda mesmo com a fila pausada (o botão "Revisar agora"); `only` revisa só esse MR,
+/// mesmo já revisado, em draft ou com CI vermelho.
+pub fn next(rows: &[Row], force: bool, only: Option<&str>) -> Option<(Row, Value)> {
     let cfg = Config::load();
     if !cfg.enabled && !force {
         return None;
@@ -534,18 +541,28 @@ pub fn next(rows: &[Row], force: bool) -> Option<(Row, Value)> {
     let mut pick = None;
     for r in rows.iter().filter(|r| !r.sha.is_empty()) {
         let key = r.key();
-        if st.mrs.get(&key).is_some_and(|e| {
-            e.sha == r.sha
-                && (e.status == "done"
-                    || e.why.starts_with(FAILED) && now.saturating_sub(e.at) < 3600)
-        }) {
+        let forced = only == Some(key.as_str());
+        if only.is_some() && !forced {
+            continue;
+        }
+        if !forced
+            && st.mrs.get(&key).is_some_and(|e| {
+                e.sha == r.sha
+                    && (e.status == "done"
+                        || e.status == "ignored"
+                        || e.why.starts_with(FAILED) && now.saturating_sub(e.at) < 3600)
+            })
+        {
             continue;
         }
         let base = format!("projects/{}/merge_requests/{}", mrs::enc(&r.path), r.iid);
         let Ok(detail) = mrs::read(&base, false) else {
             continue;
         };
-        let (status, why) = if detail["draft"] == true {
+        let (status, why) = if forced && st.spent < cfg.daily_budget {
+            pick = Some((r.clone(), detail));
+            ("run", "revisando")
+        } else if detail["draft"] == true {
             ("skip", "MR em draft")
         } else {
             match mrs::ci_of(&detail) {
@@ -648,7 +665,7 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
             }
             Err(err) => {
                 e.why = format!("não consegui aprovar: {err}");
-                Some(e.why.clone())
+                Some("não consegui aprovar".to_string())
             }
         },
         Action::Comment(f, why) => {
@@ -676,7 +693,7 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
                 .map_err(Clone::clone)
                 .and_then(|o| mrs::publish(&r.path, r.iid, o, &mut drafts));
             e.posted = drafts.iter().filter(|d| d.gitlab_id.is_some()).count();
-            e.why = match posted {
+            e.why = match &posted {
                 Ok(()) => format!(
                     "{} comentário{} publicado{} · {why}",
                     e.posted,
@@ -685,11 +702,24 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
                 ),
                 Err(err) => format!("comentários não saíram ({err}) · {why}"),
             };
-            Some(e.why.clone())
+            let head = if rep.verdict == "changes" {
+                "pediu mudanças"
+            } else {
+                "revise você"
+            };
+            Some(match &posted {
+                Ok(()) => format!("{head} · {}", e.why.split(" · ").next().unwrap_or_default()),
+                Err(_) => format!("{head} · comentários não saíram"),
+            })
         }
         Action::Human(why) => {
+            let short = if why.chars().count() <= 60 {
+                format!("revise você · {why}")
+            } else {
+                "revise você".into()
+            };
             e.why = why;
-            Some(e.why.clone())
+            Some(short)
         }
     };
     e.report = Some(rep);
@@ -697,7 +727,7 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
     e.at = now;
     st.save();
     (
-        notice.map(|n| (key, format!("{} !{}: revise você — {n}", r.proj(), r.iid))),
+        notice.map(|n| (key, format!("{} !{} · {n}", r.proj(), r.iid))),
         true,
     )
 }
