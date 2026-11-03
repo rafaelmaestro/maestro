@@ -384,8 +384,9 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] `may_approve` em Rust: veredito, confiança, sem blocker/major, claims confirmados, sha revisada, sem unapprove seu, fora de `never_approve`, autor seguido
 - [x] `changes` + `auto_comment`: publica achados dentro do diff numa review só; resto em rascunho
 - Desvios da fila: uma revisão por volta de 60 s do polling (lock global no `mrs::review`, divide com a gaveta e o vigia); incremental só depois de um `approve`; sem teste de ponta a ponta com glab falso (o `worktree()` clona de verdade): gate e decisão têm testes puros
-- [ ] Aba "IA" no app; "revise você" também em Para revisar; notificação
-- [ ] Teste no app (sessão `maestro-test`, glab falso) e primeira aprovação real com o Rafael olhando
+- [x] Aba "IA" no app (pills, motivo, gasto do dia, Pausar/Retomar grava o `enabled`, Enter abre o relatório salvo); "revise você" também em Para revisar; notificação
+- [x] Teste no app (sessão `maestro-test`, glab que recusa `-X`, estado de exemplo com MRs reais, revisão automática pausada)
+- [ ] Primeira aprovação real com o Rafael olhando (`enabled: true` no `~/.config/maestro/ai-review.json` + `read_only_connections`)
 
 ## Backlog (não entra sem decisão)
 

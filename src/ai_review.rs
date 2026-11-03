@@ -8,7 +8,7 @@ fn home() -> PathBuf {
     PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct Config {
     pub enabled: bool,
@@ -39,6 +39,12 @@ pub fn config_path() -> PathBuf {
 }
 
 impl Config {
+    pub fn save(&self) {
+        let p = config_path();
+        let _ = std::fs::create_dir_all(p.parent().unwrap());
+        let _ = std::fs::write(p, serde_json::to_string_pretty(self).unwrap());
+    }
+
     pub fn load() -> Config {
         std::fs::read_to_string(config_path())
             .ok()
@@ -326,6 +332,24 @@ pub struct Entry {
     pub at: u64,
     pub approved_sha: Option<String>,
     pub posted: usize,
+}
+
+impl Entry {
+    /// A pill do protótipo (`AIP`): (tipo, texto). `ok`, `bad`, `inc` ou vazio.
+    pub fn pill(&self) -> (&'static str, String) {
+        match self.status.as_str() {
+            "run" => ("", "⟳ revisando".into()),
+            "queue" => ("", "na fila".into()),
+            "skip" => ("", "pulado".into()),
+            _ if self.approved_sha.as_deref() == Some(self.sha.as_str()) => {
+                ("ok", "aprovado pela IA".into())
+            }
+            _ if self.report.as_ref().is_some_and(|r| r.verdict == "changes") => {
+                ("bad", format!("pediu mudanças · {}", self.posted))
+            }
+            _ => ("inc", "revise você".into()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -864,6 +888,25 @@ mod gate_tests {
             }),
             Action::Human(_)
         ));
+    }
+
+    #[test]
+    fn pill_da_aba() {
+        let e = |status: &str, verdict: &str, appr: Option<&str>| Entry {
+            sha: "s".into(),
+            status: status.into(),
+            report: Some(Report {
+                verdict: verdict.into(),
+                ..Default::default()
+            }),
+            approved_sha: appr.map(String::from),
+            posted: 2,
+            ..Default::default()
+        };
+        assert_eq!(e("done", "approve", Some("s")).pill().1, "aprovado pela IA");
+        assert_eq!(e("done", "approve", Some("old")).pill().1, "revise você");
+        assert_eq!(e("done", "changes", None).pill().1, "pediu mudanças · 2");
+        assert_eq!(e("queue", "", None).pill().1, "na fila");
     }
 
     #[test]
