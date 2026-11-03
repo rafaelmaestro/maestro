@@ -305,7 +305,8 @@ pub fn claude_args(rubric: Option<&Path>, db: Option<&crate::ai_review::Db>) -> 
     a
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Finding {
     pub file: String,
     pub line: Option<u32>,
@@ -319,14 +320,16 @@ pub struct Finding {
     pub outside: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Check {
     pub dimension: String,
     pub status: String,
     pub note: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Claim {
     pub claim: String,
     pub status: String,
@@ -336,7 +339,8 @@ pub struct Claim {
 }
 
 /// O relatório do revisor. Saída antiga (só `findings`) vira `needs_human` sem checks.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Report {
     pub verdict: String,
     pub confidence: f64,
@@ -965,6 +969,12 @@ pub fn review(
     send: impl Fn(Run),
 ) {
     use std::io::{BufRead, Write};
+    static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // um revisor por vez: a gaveta, o vigia e a fila automática dividem worktree e teto de gasto
+    let _one = ONE.try_lock().or_else(|_| {
+        send(Run::Ok("esperando a outra revisão terminar".into()));
+        ONE.lock()
+    });
     let wt = match worktree(path, iid, target) {
         Ok(w) => w,
         Err(e) => return send(Run::Failed(format!("worktree: {e}"))),
