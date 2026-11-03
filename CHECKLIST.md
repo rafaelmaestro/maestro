@@ -410,6 +410,8 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] Antes da revisão com banco, abre sozinha o proxy (alias do zsh) da porta de cada conexão liberada, lida pelo `dbx_list_connections`
 - [x] Aba IA do mais recente para o mais antigo (data de abertura) e sem os que você já revisou ou a IA aprovou
 
+- [x] Botão ↻ na barra da inbox de MRs (o do protótipo), além do R
+
 ## Backlog (não entra sem decisão)
 
 - Conflitos entre features (ripwire branch conflicts)

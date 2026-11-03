@@ -1622,6 +1622,12 @@ impl MrsView {
                     .child(tab("ib-ai", "IA", Tab::Ai)),
             )
             .child(div().flex_1())
+            .child(
+                button(&t, "ib-reload", "↻", false).on_click(cx.listener(|this, _, _, cx| {
+                    this.refresh(cx);
+                    cx.emit(Event::Toast("Inbox atualizada".into()));
+                })),
+            )
             .child(div().w(px(200.)).child(self.filter.clone()));
         let on = self.ai_cfg.enabled;
         let ai_bar = (self.tab == Tab::Ai).then(|| {
