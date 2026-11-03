@@ -846,9 +846,10 @@ pub fn worktree(path: &str, iid: u64, target: &str) -> Result<PathBuf, String> {
         .join(path)
         .join(iid.to_string());
     let mr_ref = format!("refs/mr/{iid}");
-    if wt.join(".git").exists() {
-        git(&wt, &["checkout", "-q", "--detach", &mr_ref])?;
-    } else {
+    if !(wt.join(".git").exists() && git(&wt, &["checkout", "-q", "--detach", &mr_ref]).is_ok()) {
+        // .git apontando para um clone que sumiu: refaz a worktree
+        let _ = std::fs::remove_dir_all(&wt);
+        let _ = git(&dir, &["worktree", "prune"]);
         std::fs::create_dir_all(wt.parent().unwrap()).map_err(|e| e.to_string())?;
         git(
             &dir,

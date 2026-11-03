@@ -383,6 +383,7 @@ impl State {
 }
 
 /// O que o gate olha, tudo já lido do GitLab.
+#[derive(Clone, Copy)]
 pub struct Facts<'a> {
     pub report: &'a Report,
     pub path: &'a str,
@@ -465,7 +466,7 @@ pub fn decide(f: &Facts) -> Action {
         Ok(()) => return Action::Approve,
         Err(w) => w,
     };
-    if f.cfg.auto_comment && f.report.verdict == "changes" {
+    if f.cfg.auto_comment {
         let c: Vec<Finding> = f
             .report
             .findings
@@ -495,6 +496,8 @@ fn following() -> Result<Vec<String>, String> {
         .collect())
 }
 
+const FAILED: &str = "revisão falhou: ";
+
 fn set(st: &mut State, key: &str, sha: &str, status: &str, why: &str) {
     let e = st.mrs.entry(key.to_string()).or_default();
     if e.sha != sha {
@@ -508,11 +511,11 @@ fn set(st: &mut State, key: &str, sha: &str, status: &str, why: &str) {
     e.why = why.into();
 }
 
-/// Uma volta da fila (numa thread): atualiza o estado de todos e revisa no máximo um MR.
-/// Devolve (chave, texto) para notificar quando o MR precisa de você.
-pub fn tick(rows: &[Row]) -> Option<(String, String)> {
+/// Atualiza o estado de todos e escolhe o próximo MR a revisar (já salvo como `run`).
+/// `force` roda mesmo com a fila pausada (o botão "Revisar agora").
+pub fn next(rows: &[Row], force: bool) -> Option<(Row, Value)> {
     let cfg = Config::load();
-    if !cfg.enabled {
+    if !cfg.enabled && !force {
         return None;
     }
     let mut st = State::load();
@@ -534,7 +537,11 @@ pub fn tick(rows: &[Row]) -> Option<(String, String)> {
         if st
             .mrs
             .get(&key)
-            .is_some_and(|e| e.sha == r.sha && e.status == "done")
+            .is_some_and(|e| {
+                e.sha == r.sha
+                    && (e.status == "done"
+                        || e.why.starts_with(FAILED) && now.saturating_sub(e.at) < 3600)
+            })
         {
             continue;
         }
@@ -559,7 +566,15 @@ pub fn tick(rows: &[Row]) -> Option<(String, String)> {
         set(&mut st, &key, &r.sha, status, why);
     }
     st.save();
-    let (r, detail) = pick?;
+    pick
+}
+
+/// Revisa o MR escolhido por `next`. Devolve (chave, texto) para notificar quando precisa de você
+/// e se a revisão chegou ao fim.
+pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
+    let cfg = Config::load();
+    let now = crate::news::now();
+    let st = State::load();
     let key = r.key();
     let prev = st.mrs.get(&key).cloned().unwrap_or_default();
     let since = prev
@@ -593,10 +608,13 @@ pub fn tick(rows: &[Row]) -> Option<(String, String)> {
                 &key,
                 &r.sha,
                 "skip",
-                &format!("revisão falhou: {e}"),
+                &format!("{FAILED}{e}"),
             );
+            if let Some(e) = st.mrs.get_mut(&key) {
+                e.at = now;
+            }
             st.save();
-            return None;
+            return (None, false);
         }
     };
     st.spent += cost;
@@ -688,7 +706,10 @@ pub fn tick(rows: &[Row]) -> Option<(String, String)> {
     e.cost = cost;
     e.at = now;
     st.save();
-    notice.map(|n| (key, format!("{} !{}: revise você — {n}", r.proj(), r.iid)))
+    (
+        notice.map(|n| (key, format!("{} !{}: revise você — {n}", r.proj(), r.iid))),
+        true,
+    )
 }
 
 #[cfg(test)]
@@ -877,6 +898,17 @@ mod gate_tests {
             c.iter().map(|x| x.line).collect::<Vec<_>>(),
             [Some(1), Some(3)]
         );
+        let unsure = Report {
+            verdict: "needs_human".into(),
+            ..rep.clone()
+        };
+        assert!(matches!(
+            decide(&Facts {
+                report: &unsure,
+                ..facts
+            }),
+            Action::Comment(..)
+        ));
         let quiet = Config {
             auto_comment: false,
             ..Config::default()

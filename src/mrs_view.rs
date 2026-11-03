@@ -335,22 +335,64 @@ impl MrsView {
         })
     }
 
-    fn ai_tick(&mut self, rows: Vec<Row>, cx: &mut Context<Self>) {
+    fn ai_rows(&self) -> Vec<Row> {
+        let mut v: Vec<Row> = Vec::new();
+        for r in self.lists[0].iter().chain(&self.lists[2]).flatten().flatten() {
+            if !v.iter().any(|w| w.key() == r.key()) {
+                v.push(r.clone());
+            }
+        }
+        v
+    }
+
+    fn ai_tick(&mut self, force: bool, cx: &mut Context<Self>) {
+        let rows = self.ai_rows();
+        if self.ai_busy || rows.is_empty() {
+            return;
+        }
+        self.ai_busy = true;
         cx.spawn(async move |this, cx| {
-            let out = cx
-                .background_executor()
-                .spawn(async move { crate::ai_review::tick(&rows) })
+            let bg = cx.background_executor().clone();
+            let pick = bg
+                .spawn(async move { crate::ai_review::next(&rows, force) })
                 .await;
+            let _ = this.update(cx, |this, cx| {
+                this.ai = crate::ai_review::State::load();
+                if pick.is_none() {
+                    this.ai_busy = false;
+                    if force {
+                        cx.emit(Event::Toast("Nada na fila para revisar agora".into()));
+                    }
+                }
+                cx.notify();
+            });
+            let Some((r, d)) = pick else { return };
+            let (out, ok) = bg.spawn(async move { crate::ai_review::run(r, d) }).await;
             let _ = this.update(cx, |this, cx| {
                 this.ai_busy = false;
                 this.ai = crate::ai_review::State::load();
                 if let Some((key, text)) = out {
                     cx.emit(Event::Notify(text, key));
                 }
+                if ok {
+                    this.refresh(cx);
+                }
                 cx.notify();
             });
         })
         .detach();
+    }
+
+    fn ai_now(&mut self, cx: &mut Context<Self>) {
+        if self.ai_busy {
+            let msg = match self.ai.mrs.iter().find(|e| e.1.status == "run") {
+                Some((k, _)) => format!("Já revisando {k}"),
+                None => "Já tem uma revisão rodando".into(),
+            };
+            return cx.emit(Event::Toast(msg));
+        }
+        cx.emit(Event::Toast("Revisando o próximo da fila".into()));
+        self.ai_tick(true, cx);
     }
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
@@ -377,12 +419,6 @@ impl MrsView {
                     watch.push(r.clone());
                 }
             }
-            let mut ai_rows: Vec<Row> = Vec::new();
-            for r in lists[0].iter().chain(&lists[2]).flatten() {
-                if !ai_rows.iter().any(|w| w.key() == r.key()) {
-                    ai_rows.push(r.clone());
-                }
-            }
             let fresh_review = lists[0].as_ref().ok().cloned();
             let mine = lists[1].as_ref().ok().cloned();
             let _ = this.update(cx, |this, cx| {
@@ -398,10 +434,7 @@ impl MrsView {
                 if let (Some(v), false) = (mine, me_name.is_empty()) {
                     cx.emit(Event::Mine(me_name.clone(), v));
                 }
-                if !this.ai_busy && !ai_rows.is_empty() {
-                    this.ai_busy = true;
-                    this.ai_tick(ai_rows, cx);
-                }
+                this.ai_tick(false, cx);
                 cx.notify();
             });
             for r in watch {
@@ -730,7 +763,7 @@ impl MrsView {
             .filter(|e| e.sha == r.sha || self.tab == Tab::Ai);
         if let Some(e) = ai {
             let p = e.pill();
-            if self.tab == Tab::Ai || matches!(p.0, "inc" | "bad") && !self.is_reviewed(r) {
+            if self.tab == Tab::Ai || (matches!(p.0, "inc" | "bad") && !self.is_reviewed(r) || e.status == "run") {
                 return p;
             }
         }
@@ -1539,9 +1572,21 @@ impl MrsView {
                     crate::sidebar::brl(if self.ai.day == crate::vault::today() { self.ai.spent } else { 0. }),
                     self.ai_cfg.daily_budget
                 )))
+                .children(self.ai.mrs.iter().find(|e| e.1.status == "run").map(|(k, _)| {
+                    let title = self.ai_rows().into_iter().find(|r| r.key() == *k);
+                    let label = title.map_or(k.clone(), |r| format!("{} !{}", r.proj(), r.iid));
+                    div()
+                        .font_family(t.mono.clone())
+                        .text_color(t.accent)
+                        .child(format!("⟳ revisando {label}"))
+                }))
                 .child(div().flex_1().min_w_0().text_color(t.muted).child(
-                    "Aprova sozinha os MRs de quem você segue no GitLab, fora repos de devops. Quem você não segue recebe comentários quando precisa, nunca aprovação.",
+                    "Aprova sozinha os MRs de quem você segue no GitLab, fora repos de devops. Comenta sozinha quando acha problema; quem você não segue nunca recebe aprovação.",
                 ))
+                .child(
+                    button(&t, "ai-now", "Revisar agora", false)
+                        .on_click(cx.listener(|this, _, _, cx| this.ai_now(cx))),
+                )
                 .child(
                     button(&t, "ai-pause", if on { "Pausar" } else { "Retomar" }, false)
                         .on_click(cx.listener(|this, _, _, cx| this.toggle_ai(cx))),
@@ -1578,6 +1623,13 @@ impl MrsView {
                 ))
             }
             Some(Ok(_)) => {
+                let pill_w = if self.tab == Tab::Ai
+                    || rows.iter().any(|r| self.pill(r).1.chars().count() > 13)
+                {
+                    160.
+                } else {
+                    110.
+                };
                 for (i, r) in rows.into_iter().enumerate() {
                     let (pk, pt) = self.pill(&r);
                     let pc = match pk {
@@ -1662,7 +1714,7 @@ impl MrsView {
                             .child(div().w(px(70.)).flex_none().text_color(cc).child(ci))
                             .child(
                                 div()
-                                    .w(px(if self.tab == Tab::Ai { 160. } else { 110. }))
+                                    .w(px(pill_w))
                                     .flex_none()
                                     .child(
                                         div()
