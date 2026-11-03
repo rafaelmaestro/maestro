@@ -62,6 +62,8 @@ enum Tab {
     Reviewed,
     Mine,
     Group,
+    /// MRs revisados pela IA (reviewer + grupo)
+    Ai,
 }
 
 enum Phase {
@@ -137,6 +139,8 @@ pub struct MrsView {
     _poll: Task<()>,
     /// uma volta da revisão automática rodando (uma por vez)
     ai_busy: bool,
+    ai: crate::ai_review::State,
+    ai_cfg: crate::ai_review::Config,
 }
 
 impl EventEmitter<Event> for MrsView {}
@@ -185,7 +189,8 @@ enum Side {
 /// O veredito do revisor como no protótipo: `aprovado pela IA`, `revise você`, `pediu mudanças`.
 pub fn verdict_label(t: &Theme, v: &str) -> (&'static str, Hsla) {
     match v {
-        "approve" => ("aprovado pela IA", t.ok),
+        "approved" => ("aprovado pela IA", t.ok),
+        "approve" => ("IA aprovaria", t.ok),
         "changes" => ("pediu mudanças", red()),
         _ => ("revise você", t.orange),
     }
@@ -282,6 +287,8 @@ impl MrsView {
             anchors,
             _poll: poll,
             ai_busy: false,
+            ai: crate::ai_review::State::load(),
+            ai_cfg: crate::ai_review::Config::load(),
         }
     }
 
@@ -307,6 +314,17 @@ impl MrsView {
             Tab::Review | Tab::Reviewed => 0,
             Tab::Mine => 1,
             Tab::Group => 2,
+            Tab::Ai => {
+                let (a, b) = (self.lists[0].clone()?, self.lists[2].clone()?);
+                let mut v: Vec<Row> = a.unwrap_or_default();
+                for r in b.unwrap_or_default() {
+                    if !v.iter().any(|x| x.key() == r.key()) {
+                        v.push(r);
+                    }
+                }
+                v.retain(|r| self.ai.mrs.contains_key(&r.key()));
+                return Some(Ok(v));
+            }
         };
         self.lists[i].clone().map(|l| {
             l.map(|v| match tab {
@@ -325,6 +343,7 @@ impl MrsView {
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.ai_busy = false;
+                this.ai = crate::ai_review::State::load();
                 if let Some((key, text)) = out {
                     cx.emit(Event::Notify(text, key));
                 }
@@ -369,6 +388,8 @@ impl MrsView {
             let _ = this.update(cx, |this, cx| {
                 this.me = me;
                 this.seen = std::fs::read_to_string(mrs::seen_file()).unwrap_or_default();
+                this.ai = crate::ai_review::State::load();
+                this.ai_cfg = crate::ai_review::Config::load();
                 this.lists = lists.map(Some);
                 if let Some(v) = fresh_review {
                     let n = this.notify.new_mrs(&v);
@@ -702,6 +723,17 @@ impl MrsView {
 
     /// `novo`, `revisado` ou `+N commits` (o sha mudou desde a sua última revisão).
     fn pill(&self, r: &Row) -> (&'static str, String) {
+        let ai = self
+            .ai
+            .mrs
+            .get(&r.key())
+            .filter(|e| e.sha == r.sha || self.tab == Tab::Ai);
+        if let Some(e) = ai {
+            let p = e.pill();
+            if self.tab == Tab::Ai || matches!(p.0, "inc" | "bad") && !self.is_reviewed(r) {
+                return p;
+            }
+        }
         if self.replied.contains_key(&r.key()) {
             return ("reply", "nova resposta".into());
         }
@@ -1093,6 +1125,63 @@ impl MrsView {
         cx.notify();
     }
 
+    /// Na aba IA, Enter abre o relatório salvo na gaveta (sem rodar de novo); fora dela, o MR.
+    fn open_or_report(&mut self, row: Row, cx: &mut Context<Self>) {
+        let rep = (self.tab == Tab::Ai)
+            .then(|| self.ai.mrs.get(&row.key()))
+            .flatten()
+            .and_then(|e| {
+                let mut r = e.report.clone()?;
+                // só exibição: o veredito que virou approve de verdade nesta sha
+                if e.approved_sha.as_deref() == Some(e.sha.as_str()) {
+                    r.verdict = "approved".into();
+                }
+                Some((r, e.cost))
+            });
+        let Some((mut rep, cost)) = rep else {
+            if self.tab == Tab::Ai {
+                if let Some(e) = self.ai.mrs.get(&row.key()) {
+                    cx.emit(Event::Toast(format!(
+                        "{} !{}: {}",
+                        row.proj(),
+                        row.iid,
+                        e.why
+                    )));
+                }
+                return;
+            }
+            return self.open_row(row, cx);
+        };
+        let f = std::mem::take(&mut rep.findings)
+            .into_iter()
+            .map(|x| {
+                let on = !x.outside;
+                (x, on)
+            })
+            .collect();
+        self.drawer = Some(Drawer {
+            row,
+            phase: Phase::Done(f, cost, rep),
+            incremental: false,
+            pid: None,
+            ci_warn: None,
+        });
+        cx.notify();
+    }
+
+    fn toggle_ai(&mut self, cx: &mut Context<Self>) {
+        let mut c = crate::ai_review::Config::load();
+        c.enabled = !c.enabled;
+        c.save();
+        cx.emit(Event::Toast(if c.enabled {
+            "Revisão automática retomada".into()
+        } else {
+            "Revisão automática pausada".into()
+        }));
+        self.ai_cfg = c;
+        cx.notify();
+    }
+
     pub fn start_review(&mut self, cx: &mut Context<Self>) {
         let row = match &self.open {
             Some((r, _)) => Some(r.clone()),
@@ -1336,7 +1425,7 @@ impl MrsView {
             }
             ("enter", None) => {
                 if let Some(r) = self.rows(cx).get(self.sel).cloned() {
-                    self.open_row(r, cx);
+                    self.open_or_report(r, cx);
                 }
             }
             ("/", None) => {
@@ -1427,10 +1516,37 @@ impl MrsView {
                     .child(tab("ib-rev", "Para revisar", Tab::Review))
                     .child(tab("ib-done", "Revisados", Tab::Reviewed))
                     .child(tab("ib-mine", "Meus", Tab::Mine))
-                    .child(tab("ib-grp", &group, Tab::Group)),
+                    .child(tab("ib-grp", &group, Tab::Group))
+                    .child(tab("ib-ai", "IA", Tab::Ai)),
             )
             .child(div().flex_1())
             .child(div().w(px(200.)).child(self.filter.clone()));
+        let on = self.ai_cfg.enabled;
+        let ai_bar = (self.tab == Tab::Ai).then(|| {
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap(px(12.))
+                .px(px(12.))
+                .py(px(8.))
+                .border_b_1()
+                .border_color(t.line)
+                .text_size(px(13.))
+                .child(div().font_family(t.mono.clone()).child(format!(
+                    "{} · hoje US$ {} / {}",
+                    if on { "● automática" } else { "⏸ pausada" },
+                    crate::sidebar::brl(if self.ai.day == crate::vault::today() { self.ai.spent } else { 0. }),
+                    self.ai_cfg.daily_budget
+                )))
+                .child(div().flex_1().min_w_0().text_color(t.muted).child(
+                    "Aprova sozinha os MRs de quem você segue no GitLab, fora repos de devops. Quem você não segue recebe comentários quando precisa, nunca aprovação.",
+                ))
+                .child(
+                    button(&t, "ai-pause", if on { "Pausar" } else { "Retomar" }, false)
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_ai(cx))),
+                )
+        });
         let q = self.filter.read(cx).value.clone();
         let mut list = div()
             .id("ib-list")
@@ -1451,6 +1567,10 @@ impl MrsView {
                     "Esc limpa o filtro.".into(),
                 ))
             }
+            Some(Ok(_)) if rows.is_empty() && self.tab == Tab::Ai => list = list.child(self.empty(
+                "Nada aqui".into(),
+                "MRs em que você é reviewer e os do grupo aparecem aqui quando a IA revisa.".into(),
+            )),
             Some(Ok(_)) if rows.is_empty() => {
                 list = list.child(self.empty(
                     "Nenhum MR aguardando você".into(),
@@ -1463,8 +1583,14 @@ impl MrsView {
                     let pc = match pk {
                         "new" => t.accent,
                         "inc" | "reply" => t.orange,
+                        "ok" => t.ok,
+                        "bad" => red(),
                         _ => t.muted,
                     };
+                    let why = (self.tab == Tab::Ai)
+                        .then(|| self.ai.mrs.get(&r.key()).map(|e| e.why.clone()))
+                        .flatten()
+                        .filter(|w| !w.is_empty());
                     let (ci, cc) = Self::ci_label(self.ci.get(&r.key()).copied(), &t);
                     let dot = match pk {
                         "new" => Some(t.accent),
@@ -1488,7 +1614,7 @@ impl MrsView {
                             .on_click(cx.listener(move |this, e: &ClickEvent, _, cx| {
                                 this.sel = i;
                                 if e.click_count() == 2 {
-                                    this.open_row(r2.clone(), cx);
+                                    this.open_or_report(r2.clone(), cx);
                                 }
                                 cx.notify();
                             }))
@@ -1507,7 +1633,23 @@ impl MrsView {
                                     .child(r.proj().to_string())
                                     .child(div().text_color(t.muted).child(format!("!{}", r.iid))),
                             )
-                            .child(div().flex_1().min_w_0().truncate().child(r.title.clone()))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .flex()
+                                    .flex_col()
+                                    .child(div().truncate().child(r.title.clone()))
+                                    .when_some(why, |d, w| {
+                                        d.child(
+                                            div()
+                                                .truncate()
+                                                .text_size(px(12.))
+                                                .text_color(t.muted)
+                                                .child(w),
+                                        )
+                                    }),
+                            )
                             .child(
                                 div()
                                     .w(px(120.))
@@ -1519,18 +1661,21 @@ impl MrsView {
                             )
                             .child(div().w(px(70.)).flex_none().text_color(cc).child(ci))
                             .child(
-                                div().w(px(110.)).flex_none().child(
-                                    div()
-                                        .font_family(t.mono.clone())
-                                        .text_size(px(12.))
-                                        .px(px(7.))
-                                        .rounded(px(10.))
-                                        .border_1()
-                                        .border_color(if pk.is_empty() { t.line } else { pc })
-                                        .text_color(pc)
-                                        .whitespace_nowrap()
-                                        .child(pt),
-                                ),
+                                div()
+                                    .w(px(if self.tab == Tab::Ai { 160. } else { 110. }))
+                                    .flex_none()
+                                    .child(
+                                        div()
+                                            .font_family(t.mono.clone())
+                                            .text_size(px(12.))
+                                            .px(px(7.))
+                                            .rounded(px(10.))
+                                            .border_1()
+                                            .border_color(if pk.is_empty() { t.line } else { pc })
+                                            .text_color(pc)
+                                            .whitespace_nowrap()
+                                            .child(pt),
+                                    ),
                             ),
                     );
                 }
@@ -1542,6 +1687,7 @@ impl MrsView {
             .flex()
             .flex_col()
             .child(bar)
+            .children(ai_bar)
             .child(list)
     }
 
