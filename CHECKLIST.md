@@ -401,6 +401,8 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 
 - [x] Rascunhos criados do relatório salvo da aba IA usam a sha revisada (antes saíam sem sha e a publicação recusava com "commit novo")
 
+- [x] Comentários pendentes de MRs já revisados saem do relatório salvo (sem rever; pula se você já comentou); pill "comentou · N"; na aba IA, o que você fez no MR vale mais que "revise você"
+
 ## Backlog (não entra sem decisão)
 
 - Conflitos entre features (ripwire branch conflicts)

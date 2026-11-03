@@ -805,7 +805,9 @@ impl MrsView {
             .filter(|e| e.sha == r.sha || self.tab == Tab::Ai);
         if let Some(e) = ai {
             let p = e.pill();
-            if self.tab == Tab::Ai
+            // na aba IA, o que você fez no MR (aprovar, comentar, revisar) vale mais que o "revise você"
+            let you = e.sha == r.sha && p.0 == "inc" && self.is_reviewed(r);
+            if self.tab == Tab::Ai && !you
                 || (matches!(p.0, "inc" | "bad") && !self.is_reviewed(r) || e.status == "run")
             {
                 return p;

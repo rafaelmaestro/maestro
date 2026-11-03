@@ -332,6 +332,8 @@ pub struct Entry {
     pub at: u64,
     pub approved_sha: Option<String>,
     pub posted: usize,
+    /// a barra de comentário já rodou nesta sha
+    pub commented: bool,
 }
 
 impl Entry {
@@ -347,6 +349,7 @@ impl Entry {
             _ if self.report.as_ref().is_some_and(|r| r.verdict == "changes") => {
                 ("bad", format!("pediu mudanças · {}", self.posted))
             }
+            _ if self.posted > 0 => ("inc", format!("comentou · {}", self.posted)),
             _ => ("inc", "revise você".into()),
         }
     }
@@ -467,22 +470,107 @@ pub fn decide(f: &Facts) -> Action {
         Err(w) => w,
     };
     if f.cfg.auto_comment {
-        let c: Vec<Finding> = f
-            .report
-            .findings
-            .iter()
-            .filter(|x| x.post && !x.outside && x.line.is_some())
-            .filter(|x| {
-                matches!(x.severity.as_str(), "blocker" | "major")
-                    || (x.severity == "minor" && matches!(x.category.as_str(), "sec" | "contract"))
-            })
-            .cloned()
-            .collect();
+        let c = bar(f.report);
         if !c.is_empty() {
             return Action::Comment(c, why);
         }
     }
     Action::Human(why)
+}
+
+/// Os achados que passam na barra de comentário (seção 6 da skill).
+fn bar(r: &Report) -> Vec<Finding> {
+    r.findings
+        .iter()
+        .filter(|x| x.post && !x.outside && x.line.is_some())
+        .filter(|x| {
+            matches!(x.severity.as_str(), "blocker" | "major")
+                || (x.severity == "minor" && matches!(x.category.as_str(), "sec" | "contract"))
+        })
+        .cloned()
+        .collect()
+}
+
+/// Publica os achados como uma review só; devolve quantos saíram e o erro, se houve.
+fn post(
+    r: &Row,
+    sha: &str,
+    opened: &Result<mrs::Opened, String>,
+    f: &[Finding],
+) -> (usize, Result<(), String>) {
+    let mut drafts: Vec<mrs::Draft> = f
+        .iter()
+        .enumerate()
+        .map(|(i, x)| mrs::Draft {
+            id: i,
+            file: x.file.clone(),
+            line: x.line,
+            old: None,
+            body: x.body.clone(),
+            by: "Claude".into(),
+            sev: None,
+            label: None,
+            head: sha.to_string(),
+            gitlab_id: None,
+            error: None,
+            general: false,
+            reply_to: None,
+        })
+        .collect();
+    let res = opened
+        .as_ref()
+        .map_err(Clone::clone)
+        .and_then(|o| mrs::publish(&r.path, r.iid, o, &mut drafts));
+    (drafts.iter().filter(|d| d.gitlab_id.is_some()).count(), res)
+}
+
+fn posted_why(n: usize, res: &Result<(), String>, why: &str) -> String {
+    match res {
+        Ok(()) => format!(
+            "{n} comentário{} publicado{} · {why}",
+            if n == 1 { "" } else { "s" },
+            if n == 1 { "" } else { "s" }
+        ),
+        Err(err) => format!("comentários não saíram ({err}) · {why}"),
+    }
+}
+
+/// MRs revisados antes de a IA comentar no "revise você": publica do relatório salvo, sem rever.
+fn backfill(st: &mut State, rows: &[Row]) {
+    let me = mrs::me().unwrap_or_default();
+    let me = me.as_str();
+    for r in rows {
+        let Some(e) = st.mrs.get_mut(&r.key()) else {
+            continue;
+        };
+        if e.commented || e.status != "done" || e.sha != r.sha {
+            continue;
+        }
+        e.commented = true;
+        let Some(rep) = &e.report else { continue };
+        let f = bar(rep);
+        if f.is_empty() || e.posted > 0 || e.approved_sha.as_deref() == Some(e.sha.as_str()) {
+            continue;
+        }
+        let base = format!("projects/{}/merge_requests/{}", mrs::enc(&r.path), r.iid);
+        let notes = mrs::read(&format!("{base}/notes?per_page=100"), true).unwrap_or_default();
+        let mine = |n: &Value| n["system"] != true && n["author"]["username"].as_str() == Some(me);
+        if me.is_empty() || notes.as_array().is_none_or(|v| v.iter().any(mine)) {
+            continue;
+        }
+        let opened = mrs::open(&r.path, r.iid);
+        let head = opened.as_ref().map_or("", |o| {
+            o.detail["diff_refs"]["head_sha"]
+                .as_str()
+                .unwrap_or_default()
+        });
+        if head != e.sha {
+            continue;
+        }
+        let (n, res) = post(r, &e.sha, &opened, &f);
+        e.posted = n;
+        e.why = posted_why(n, &res, &e.why);
+    }
 }
 
 fn following() -> Result<Vec<String>, String> {
@@ -537,6 +625,9 @@ pub fn next(rows: &[Row], force: bool, only: Option<&str>) -> Option<(Row, Value
     {
         st.following = f;
         st.following_at = now;
+    }
+    if cfg.auto_comment && only.is_none() {
+        backfill(&mut st, rows);
     }
     let mut pick = None;
     for r in rows.iter().filter(|r| !r.sha.is_empty()) {
@@ -669,45 +760,15 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
             }
         },
         Action::Comment(f, why) => {
-            let mut drafts: Vec<mrs::Draft> = f
-                .iter()
-                .enumerate()
-                .map(|(i, x)| mrs::Draft {
-                    id: i,
-                    file: x.file.clone(),
-                    line: x.line,
-                    old: None,
-                    body: x.body.clone(),
-                    by: "Claude".into(),
-                    sev: None,
-                    label: None,
-                    head: r.sha.clone(),
-                    gitlab_id: None,
-                    error: None,
-                    general: false,
-                    reply_to: None,
-                })
-                .collect();
-            let posted = opened
-                .as_ref()
-                .map_err(Clone::clone)
-                .and_then(|o| mrs::publish(&r.path, r.iid, o, &mut drafts));
-            e.posted = drafts.iter().filter(|d| d.gitlab_id.is_some()).count();
-            e.why = match &posted {
-                Ok(()) => format!(
-                    "{} comentário{} publicado{} · {why}",
-                    e.posted,
-                    if e.posted == 1 { "" } else { "s" },
-                    if e.posted == 1 { "" } else { "s" }
-                ),
-                Err(err) => format!("comentários não saíram ({err}) · {why}"),
-            };
+            let (n, res) = post(&r, &r.sha, &opened, &f);
+            e.posted = n;
+            e.why = posted_why(n, &res, &why);
             let head = if rep.verdict == "changes" {
                 "pediu mudanças"
             } else {
                 "revise você"
             };
-            Some(match &posted {
+            Some(match &res {
                 Ok(()) => format!("{head} · {}", e.why.split(" · ").next().unwrap_or_default()),
                 Err(_) => format!("{head} · comentários não saíram"),
             })
@@ -723,6 +784,7 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
         }
     };
     e.report = Some(rep);
+    e.commented = true;
     e.cost = cost;
     e.at = now;
     st.save();
@@ -956,7 +1018,12 @@ mod gate_tests {
             ..Default::default()
         };
         assert_eq!(e("done", "approve", Some("s")).pill().1, "aprovado pela IA");
-        assert_eq!(e("done", "approve", Some("old")).pill().1, "revise você");
+        assert_eq!(e("done", "needs_human", None).pill().1, "comentou · 2");
+        let quiet = Entry {
+            posted: 0,
+            ..e("done", "approve", Some("old"))
+        };
+        assert_eq!(quiet.pill().1, "revise você");
         assert_eq!(e("done", "changes", None).pill().1, "pediu mudanças · 2");
         assert_eq!(e("queue", "", None).pill().1, "na fila");
     }
