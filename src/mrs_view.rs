@@ -366,8 +366,12 @@ impl MrsView {
             let pick = bg
                 .spawn(async move { crate::ai_review::next(&rows, force, only.as_deref()) })
                 .await;
+            let (pick, notices) = pick;
             let _ = this.update(cx, |this, cx| {
                 this.ai = crate::ai_review::State::load();
+                for (key, text) in notices {
+                    cx.emit(Event::Notify(text, key));
+                }
                 if pick.is_none() {
                     this.ai_busy = false;
                     if force {
@@ -809,6 +813,7 @@ impl MrsView {
             let you = e.sha == r.sha && p.0 == "inc" && self.is_reviewed(r);
             if self.tab == Tab::Ai && !you
                 || (matches!(p.0, "inc" | "bad") && !self.is_reviewed(r) || e.status == "run")
+                || p.0 == "ok" && e.sha == r.sha
             {
                 return p;
             }

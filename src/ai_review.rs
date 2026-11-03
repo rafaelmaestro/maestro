@@ -334,6 +334,8 @@ pub struct Entry {
     pub posted: usize,
     /// a barra de comentário já rodou nesta sha
     pub commented: bool,
+    /// pediu no MR para resolver as threads; aprova quando resolverem
+    pub wait_threads: bool,
 }
 
 impl Entry {
@@ -346,6 +348,7 @@ impl Entry {
             _ if self.approved_sha.as_deref() == Some(self.sha.as_str()) => {
                 ("ok", "aprovado pela IA".into())
             }
+            _ if self.wait_threads => ("", "esperando threads".into()),
             _ if self.report.as_ref().is_some_and(|r| r.verdict == "changes") => {
                 ("bad", format!("pediu mudanças · {}", self.posted))
             }
@@ -399,6 +402,7 @@ pub struct Facts<'a> {
     pub prev_approved_sha: Option<&'a str>,
     pub following: &'a [String],
     pub cfg: &'a Config,
+    pub threads_open: bool,
 }
 
 const MIN_CONFIDENCE: f64 = 0.8;
@@ -454,12 +458,21 @@ pub fn may_approve(f: &Facts) -> Result<(), String> {
     if !f.following.iter().any(|u| u == f.author) {
         return Err(format!("você não segue @{}", f.author));
     }
+    // por último: só barra quando todo o resto já passou
+    if f.threads_open {
+        return Err(THREADS.into());
+    }
     Ok(())
 }
+
+pub const THREADS: &str = "esperando resolverem as threads abertas";
+const THREADS_NOTE: &str = "note: tem threads abertas neste MR. Do meu lado está ok; assim que forem resolvidas, eu aprovo.";
 
 #[derive(Debug, PartialEq)]
 pub enum Action {
     Approve,
+    /// aprovaria, mas há threads abertas: pede no MR para resolver
+    Resolve,
     Comment(Vec<Finding>, String),
     Human(String),
 }
@@ -467,6 +480,7 @@ pub enum Action {
 pub fn decide(f: &Facts) -> Action {
     let why = match may_approve(f) {
         Ok(()) => return Action::Approve,
+        Err(w) if w == THREADS => return Action::Resolve,
         Err(w) => w,
     };
     if f.cfg.auto_comment {
@@ -573,6 +587,86 @@ fn backfill(st: &mut State, rows: &[Row]) {
     }
 }
 
+fn gate(
+    r: &Row,
+    rep: &Report,
+    opened: &Result<mrs::Opened, String>,
+    prev_approved_sha: Option<&str>,
+    following: &[String],
+    cfg: &Config,
+) -> Action {
+    let d = opened.as_ref().map(|o| &o.detail);
+    decide(&Facts {
+        report: rep,
+        path: &r.path,
+        author: r.who.trim_start_matches('@'),
+        reviewed_sha: &r.sha,
+        head_sha: d.map_or("", |d| {
+            d["diff_refs"]["head_sha"].as_str().unwrap_or_default()
+        }),
+        draft: d.map_or(true, |d| d["draft"] == true),
+        ci_ok: d.is_ok_and(|d| mrs::ci_of(d) == crate::mr::Status::Ok),
+        i_approved: opened
+            .as_ref()
+            .is_ok_and(|o| o.approvals["user_has_approved"] == true),
+        prev_approved_sha,
+        following,
+        cfg,
+        threads_open: d.is_ok_and(|d| d["blocking_discussions_resolved"] == false),
+    })
+}
+
+fn approve(r: &Row, e: &mut Entry, summary: &str) -> Option<String> {
+    match mrs::approve(&r.path, r.iid, &r.sha) {
+        Ok(()) => {
+            e.approved_sha = Some(r.sha.clone());
+            e.wait_threads = false;
+            e.why = summary.to_string();
+            None
+        }
+        Err(err) => {
+            e.why = format!("não consegui aprovar: {err}");
+            Some("não consegui aprovar".to_string())
+        }
+    }
+}
+
+/// MRs que esperavam resolverem as threads: quando resolvem (mesma sha), passa no gate de novo e aprova.
+fn recheck(st: &mut State, rows: &[Row], cfg: &Config) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let following = st.following.clone();
+    for r in rows {
+        let Some(e) = st.mrs.get_mut(&r.key()) else {
+            continue;
+        };
+        if !e.wait_threads || e.sha != r.sha {
+            continue;
+        }
+        let base = format!("projects/{}/merge_requests/{}", mrs::enc(&r.path), r.iid);
+        if mrs::read(&base, false).map_or(true, |d| d["blocking_discussions_resolved"] == false) {
+            continue;
+        }
+        let Some(rep) = e.report.clone() else {
+            continue;
+        };
+        let opened = mrs::open(&r.path, r.iid);
+        match gate(r, &rep, &opened, None, &following, cfg) {
+            Action::Approve => {
+                if let Some(n) = approve(r, e, &rep.summary) {
+                    out.push((r.key(), format!("{} !{} · {n}", r.proj(), r.iid)));
+                }
+            }
+            Action::Resolve => {}
+            _ => {
+                e.wait_threads = false;
+                e.why = "o MR mudou enquanto esperava as threads".into();
+                out.push((r.key(), format!("{} !{} · revise você", r.proj(), r.iid)));
+            }
+        }
+    }
+    out
+}
+
 fn following() -> Result<Vec<String>, String> {
     let id = mrs::read("user", false)?["id"].as_u64().ok_or("sem id")?;
     let v = mrs::read(&format!("users/{id}/following?per_page=100"), true)?;
@@ -608,10 +702,12 @@ fn set(st: &mut State, key: &str, sha: &str, status: &str, why: &str) {
 /// Atualiza o estado de todos e escolhe o próximo MR a revisar (já salvo como `run`).
 /// `force` roda mesmo com a fila pausada (o botão "Revisar agora"); `only` revisa só esse MR,
 /// mesmo já revisado, em draft ou com CI vermelho.
-pub fn next(rows: &[Row], force: bool, only: Option<&str>) -> Option<(Row, Value)> {
+pub type Notice = (String, String);
+
+pub fn next(rows: &[Row], force: bool, only: Option<&str>) -> (Option<(Row, Value)>, Vec<Notice>) {
     let cfg = Config::load();
     if !cfg.enabled && !force {
-        return None;
+        return (None, Vec::new());
     }
     let mut st = State::load();
     let today = crate::vault::today();
@@ -629,6 +725,11 @@ pub fn next(rows: &[Row], force: bool, only: Option<&str>) -> Option<(Row, Value
     if cfg.auto_comment && only.is_none() {
         backfill(&mut st, rows);
     }
+    let notices = if only.is_none() {
+        recheck(&mut st, rows, &cfg)
+    } else {
+        Vec::new()
+    };
     let mut pick = None;
     for r in rows.iter().filter(|r| !r.sha.is_empty()) {
         let key = r.key();
@@ -670,7 +771,7 @@ pub fn next(rows: &[Row], force: bool, only: Option<&str>) -> Option<(Row, Value
         set(&mut st, &key, &r.sha, status, why);
     }
     st.save();
-    pick
+    (pick, notices)
 }
 
 /// Revisa o MR escolhido por `next`. Devolve (chave, texto) para notificar quando precisa de você
@@ -722,43 +823,45 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
         .map(|o| o.raw.iter().map(|x| (x.0.clone(), x.2.clone())).collect())
         .unwrap_or_default();
     mrs::mark_outside(&mut rep.findings, &raw);
-    let head = opened.as_ref().map_or(String::new(), |o| {
-        o.detail["diff_refs"]["head_sha"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string()
-    });
-    let action = decide(&Facts {
-        report: &rep,
-        path: &r.path,
-        author: r.who.trim_start_matches('@'),
-        reviewed_sha: &r.sha,
-        head_sha: &head,
-        draft: opened.as_ref().map_or(true, |o| o.detail["draft"] == true),
-        ci_ok: opened
-            .as_ref()
-            .is_ok_and(|o| mrs::ci_of(&o.detail) == crate::mr::Status::Ok),
-        i_approved: opened
-            .as_ref()
-            .is_ok_and(|o| o.approvals["user_has_approved"] == true),
-        prev_approved_sha: prev.approved_sha.as_deref(),
-        following: &st.following,
-        cfg: &cfg,
-    });
+    let action = gate(
+        &r,
+        &rep,
+        &opened,
+        prev.approved_sha.as_deref(),
+        &st.following,
+        &cfg,
+    );
     set(&mut st, &key, &r.sha, "done", "");
     let e = st.mrs.get_mut(&key).unwrap();
     let notice = match action {
-        Action::Approve => match mrs::approve(&r.path, r.iid, &r.sha) {
-            Ok(()) => {
-                e.approved_sha = Some(r.sha.clone());
-                e.why = rep.summary.clone();
-                None
-            }
-            Err(err) => {
-                e.why = format!("não consegui aprovar: {err}");
-                Some("não consegui aprovar".to_string())
-            }
-        },
+        Action::Approve => approve(&r, e, &rep.summary),
+        Action::Resolve => {
+            let mut note = vec![mrs::Draft {
+                id: 0,
+                file: String::new(),
+                line: None,
+                old: None,
+                body: THREADS_NOTE.into(),
+                by: "Claude".into(),
+                sev: None,
+                label: None,
+                head: r.sha.clone(),
+                gitlab_id: None,
+                error: None,
+                general: true,
+                reply_to: None,
+            }];
+            let res = opened
+                .as_ref()
+                .map_err(Clone::clone)
+                .and_then(|o| mrs::publish(&r.path, r.iid, o, &mut note));
+            e.wait_threads = true;
+            e.why = match res {
+                Ok(()) => format!("{THREADS} · pedi no MR · {}", rep.summary),
+                Err(err) => format!("{THREADS} · o pedido não saiu ({err}) · {}", rep.summary),
+            };
+            Some("pronto para aprovar, pedi para resolverem as threads".into())
+        }
         Action::Comment(f, why) => {
             let (n, res) = post(&r, &r.sha, &opened, &f);
             e.posted = n;
@@ -832,8 +935,22 @@ mod gate_tests {
             prev_approved_sha: None,
             following: &fol,
             cfg: &cfg,
+            threads_open: false,
         };
         assert_eq!(decide(&base()), Action::Approve);
+        let open = Facts {
+            threads_open: true,
+            ..base()
+        };
+        assert_eq!(decide(&open), Action::Resolve);
+        assert!(
+            may_approve(&Facts {
+                author: "zé",
+                ..open
+            })
+            .unwrap_err()
+            .contains("não segue")
+        );
         let no = |f: Facts| may_approve(&f).unwrap_err();
         assert!(
             no(Facts {
@@ -972,6 +1089,7 @@ mod gate_tests {
             prev_approved_sha: None,
             following: &[],
             cfg: &cfg,
+            threads_open: false,
         };
         let Action::Comment(c, _) = decide(&facts) else {
             panic!()

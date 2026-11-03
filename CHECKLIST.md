@@ -403,6 +403,8 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 
 - [x] Comentários pendentes de MRs já revisados saem do relatório salvo (sem rever; pula se você já comentou); pill "comentou · N"; na aba IA, o que você fez no MR vale mais que "revise você"
 
+- [x] Não aprova com threads abertas: pede no MR para resolverem e aprova sozinha quando resolvem (mesma sha); "aprovado pela IA" aparece em todas as abas
+
 ## Backlog (não entra sem decisão)
 
 - Conflitos entre features (ripwire branch conflicts)

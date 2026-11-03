@@ -1558,7 +1558,7 @@ function undo(){ const g=S.undo.pop(); if(!g){ toast('Nada para desfazer'); retu
 
 /* ---------- MRs ---------- */
 const GROUPS={rev:'Para revisar',done:'Revisados',mine:'Meus',grp:'ctbz/experts',ai:'IA'};
-const AIP={approve:['ok','aprovado pela IA'],human:['inc','revise você'],changes:['bad','pediu mudanças'],queue:['','na fila'],run:['','⟳ revisando'],skip:['','pulado']};
+const AIP={approve:['ok','aprovado pela IA'],human:['inc','revise você'],changes:['bad','pediu mudanças'],queue:['','na fila'],threads:['','esperando threads'],run:['','⟳ revisando'],skip:['','pulado']};
 const aiPill=m=>{ const [c,t]=m.ai.v==='human'&&m.ai.posted?['inc','comentou']:AIP[m.ai.v]; return `<span class="pill ${c}" title="${esc(m.ai.why)}">${t}${m.ai.v==='changes'||m.ai.v==='human'&&m.ai.posted?' · '+m.ai.posted:''}</span>`; };
 const AIDIM=[['correct','Correção'],['sec','Segurança'],['read','Legibilidade'],['perf','Performance'],['tests','Testes'],['contract','Contrato e dados'],['desc','Descrição × diff'],['inject','Injeção no texto do MR']];
 const ciTxt=c=>({success:'✓ CI',running:'⟳ CI',failed:'✗ CI',none:'– sem CI'}[c]);
