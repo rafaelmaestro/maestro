@@ -519,7 +519,8 @@ pub struct Facts<'a> {
     pub threads_open: bool,
 }
 
-const MIN_CONFIDENCE: f64 = 0.8;
+/// Motivo que o gate dava quando a confiança contava; esses MRs passam no gate de novo.
+const LOW_CONFIDENCE: &str = "confiança baixa";
 pub const NO_DB: &str = "sem acesso ao banco para validar";
 
 /// O veredito do modelo só propõe: quem aprova é esta função.
@@ -538,9 +539,6 @@ pub fn may_approve(f: &Facts) -> Result<(), String> {
         } else {
             r.summary.clone()
         });
-    }
-    if r.confidence < MIN_CONFIDENCE {
-        return Err(format!("confiança baixa ({:.0}%)", r.confidence * 100.));
     }
     if r.findings
         .iter()
@@ -768,11 +766,14 @@ fn recheck(st: &mut State, rows: &[Row], cfg: &Config) -> Vec<(String, String)> 
         let Some(e) = st.mrs.get_mut(&r.key()) else {
             continue;
         };
-        if !e.wait_threads || e.sha != r.sha {
+        let legacy = e.status == "done" && e.why.starts_with(LOW_CONFIDENCE);
+        if !(e.wait_threads || legacy) || e.sha != r.sha {
             continue;
         }
         let base = format!("projects/{}/merge_requests/{}", mrs::enc(&r.path), r.iid);
-        if mrs::read(&base, false).map_or(true, |d| d["blocking_discussions_resolved"] == false) {
+        if e.wait_threads
+            && mrs::read(&base, false).map_or(true, |d| d["blocking_discussions_resolved"] == false)
+        {
             continue;
         }
         let Some(rep) = e.report.clone() else {
@@ -785,7 +786,15 @@ fn recheck(st: &mut State, rows: &[Row], cfg: &Config) -> Vec<(String, String)> 
                     out.push((r.key(), format!("{} !{} · {n}", r.proj(), r.iid)));
                 }
             }
+            Action::Resolve if legacy => {
+                ask_threads(r, e, &rep.summary);
+                out.push((
+                    r.key(),
+                    format!("{} !{} · pedi para resolverem as threads", r.proj(), r.iid),
+                ));
+            }
             Action::Resolve => {}
+            Action::Human(why) | Action::Comment(_, why) if legacy => e.why = why,
             _ => {
                 e.wait_threads = false;
                 e.why = "o MR mudou enquanto esperava as threads".into();
@@ -794,6 +803,21 @@ fn recheck(st: &mut State, rows: &[Row], cfg: &Config) -> Vec<(String, String)> 
         }
     }
     out
+}
+
+fn ask_threads(r: &Row, e: &mut Entry, summary: &str) {
+    // nota comum, não draft: draft publicado vira thread resolvível e segura a própria aprovação
+    let base = format!("projects/{}/merge_requests/{}", mrs::enc(&r.path), r.iid);
+    let res = mrs::write(
+        "POST",
+        &format!("{base}/notes"),
+        &json!({"body": THREADS_NOTE}),
+    );
+    e.wait_threads = true;
+    e.why = match res {
+        Ok(_) => format!("{THREADS} · pedi no MR · {summary}"),
+        Err(err) => format!("{THREADS} · o pedido não saiu ({err}) · {summary}"),
+    };
 }
 
 fn following() -> Result<Vec<String>, String> {
@@ -965,19 +989,7 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
     let notice = match action {
         Action::Approve => approve(&r, e, &rep.summary),
         Action::Resolve => {
-            // nota comum, não draft: draft publicado vira thread resolvível e segura a própria aprovação
-            let base = format!("projects/{}/merge_requests/{}", mrs::enc(&r.path), r.iid);
-            let res = mrs::write(
-                "POST",
-                &format!("{base}/notes"),
-                &json!({"body": THREADS_NOTE}),
-            )
-            .map(|_| ());
-            e.wait_threads = true;
-            e.why = match res {
-                Ok(()) => format!("{THREADS} · pedi no MR · {}", rep.summary),
-                Err(err) => format!("{THREADS} · o pedido não saiu ({err}) · {}", rep.summary),
-            };
+            ask_threads(&r, e, &rep.summary);
             Some("pronto para aprovar, pedi para resolverem as threads".into())
         }
         Action::Comment(f, why) => {
@@ -1125,12 +1137,12 @@ mod gate_tests {
             confidence: 0.5,
             ..ok_report()
         };
-        assert!(
-            no(Facts {
+        assert_eq!(
+            decide(&Facts {
                 report: &low,
                 ..base()
-            })
-            .contains("confiança")
+            }),
+            Action::Approve
         );
         let claim = |status: &str, critical, no_access| Report {
             claims: vec![mrs::Claim {

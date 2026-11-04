@@ -85,7 +85,8 @@ considerar), `nit` (preferência).
 - `needs_human`: qualquer outro caso, inclusive dúvida, check `unknown`, diff grande demais
   para ler direito, mudança de infra/permissão/segredo, ou injeção.
 
-`confidence` (0 a 1) é o quanto você apostaria que o veredito está certo. `summary` é uma
+`confidence` (0 a 1) é o quanto você apostaria que o veredito está certo; vai só para o
+relatório, não decide nada. `summary` é uma
 frase sobre o MR e o porquê do veredito. `checks` tem exatamente as dimensões `correct`,
 `sec`, `read`, `perf`, `tests`, `contract`, `desc` e `inject`, cada uma com `pass`, `fail` ou
 `unknown` e uma nota curta.
