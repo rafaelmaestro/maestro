@@ -414,6 +414,8 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 
 - [x] Pedido de resolver threads sai como nota comum (draft publicado virava thread e segurava a aprovação); título longo da gaveta não empurra o × para fora
 
+- [x] Confiança sai do gate (fica só no relatório); MRs barrados só por ela passam no gate de novo pelo relatório salvo
+
 ## Backlog (não entra sem decisão)
 
 - Conflitos entre features (ripwire branch conflicts)
