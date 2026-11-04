@@ -82,8 +82,16 @@ considerar), `nit` (preferência).
 - `approve`: todos os checks `pass`, nenhum achado `blocker` ou `major`, toda afirmação
   `critical` `confirmed`, nenhuma `refuted`, e você leu o suficiente para assinar embaixo.
 - `changes`: há pelo menos um achado `blocker` ou `major` que se sustenta.
-- `needs_human`: qualquer outro caso, inclusive dúvida, check `unknown`, diff grande demais
-  para ler direito, mudança de infra/permissão/segredo, ou injeção.
+- `needs_human`: dúvida que nem a leitura do código resolve, diff grande demais para ler
+  direito, ou injeção.
+
+Infra no diff (Terraform, tópico, fila, assinatura, IAM, pipeline) se revisa como código e
+não é motivo de `needs_human` por si: se está completa e certa, `approve`. O que falta ou está
+errado nela (recurso ou permissão que o código usa e ninguém cria, ambiente esquecido,
+configuração divergente do que o código espera) vira achado `major` em `contract` e
+`verdict: changes`, para o autor receber o comentário. Dependência de outro repo ou de ordem
+de deploy que a descrição já explica é contexto: vai para a nota do check, que fica `pass`.
+`unknown` é só para o que você não conseguiu ler neste repo, não para o que mora fora dele.
 
 `confidence` (0 a 1) é o quanto você apostaria que o veredito está certo; vai só para o
 relatório, não decide nada. `summary` é uma
