@@ -542,9 +542,9 @@ pub fn may_approve(f: &Facts) -> Result<(), String> {
     }
     if r.findings
         .iter()
-        .any(|x| matches!(x.severity.as_str(), "blocker" | "major"))
+        .any(|x| matches!(x.severity.as_str(), "blocker" | "major" | "minor"))
     {
-        return Err("tem achado blocker/major".into());
+        return Err("tem achado para o autor resolver".into());
     }
     if let Some(c) = r.claims.iter().find(|c| c.status == "refuted") {
         return Err(format!("afirmação desmentida: {}", c.claim));
@@ -624,10 +624,7 @@ fn bar(r: &Report) -> Vec<Finding> {
     r.findings
         .iter()
         .filter(|x| x.post && !x.outside && x.line.is_some())
-        .filter(|x| {
-            matches!(x.severity.as_str(), "blocker" | "major")
-                || (x.severity == "minor" && matches!(x.category.as_str(), "sec" | "contract"))
-        })
+        .filter(|x| matches!(x.severity.as_str(), "blocker" | "major" | "minor"))
         .cloned()
         .collect()
 }
@@ -1299,7 +1296,7 @@ mod gate_tests {
         };
         assert_eq!(
             c.iter().map(|x| x.line).collect::<Vec<_>>(),
-            [Some(1), Some(3)]
+            [Some(1), Some(2), Some(3)]
         );
         let unsure = Report {
             verdict: "needs_human".into(),
