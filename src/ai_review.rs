@@ -721,6 +721,7 @@ fn gate(
     prev_approved_sha: Option<&str>,
     following: &[String],
     cfg: &Config,
+    stale_mine: bool,
 ) -> Action {
     let d = opened.as_ref().map(|o| &o.detail);
     decide(&Facts {
@@ -733,9 +734,10 @@ fn gate(
         }),
         draft: d.map_or(true, |d| d["draft"] == true),
         ci_ok: d.is_ok_and(|d| mrs::ci_of(d) == crate::mr::Status::Ok),
-        i_approved: opened
-            .as_ref()
-            .is_ok_and(|o| o.approvals["user_has_approved"] == true),
+        i_approved: !stale_mine
+            && opened
+                .as_ref()
+                .is_ok_and(|o| o.approvals["user_has_approved"] == true),
         prev_approved_sha,
         following,
         cfg,
@@ -780,7 +782,7 @@ fn recheck(st: &mut State, rows: &[Row], cfg: &Config) -> Vec<(String, String)> 
             continue;
         };
         let opened = mrs::open(&r.path, r.iid);
-        match gate(r, &rep, &opened, None, &following, cfg) {
+        match gate(r, &rep, &opened, None, &following, cfg, false) {
             Action::Approve => {
                 if let Some(n) = approve(r, e, &rep.summary) {
                     out.push((r.key(), format!("{} !{} · {n}", r.proj(), r.iid)));
@@ -929,6 +931,10 @@ pub fn next(rows: &[Row], force: bool, only: Option<&str>) -> (Option<(Row, Valu
 
 /// Revisa o MR escolhido por `next`. Devolve (chave, texto) para notificar quando precisa de você
 /// e se a revisão chegou ao fim.
+fn stale_approval(ai_sha: Option<&str>, sha: &str, approved: bool) -> bool {
+    approved && ai_sha.is_some_and(|s| s != sha)
+}
+
 pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
     let cfg = Config::load();
     let now = crate::news::now();
@@ -976,6 +982,14 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
         .map(|o| o.raw.iter().map(|x| (x.0.clone(), x.2.clone())).collect())
         .unwrap_or_default();
     mrs::mark_outside(&mut rep.findings, &raw);
+    // aprovação da IA numa sha antiga continua valendo no GitLab: só se mantém se a nova revisão aprovaria
+    let stale = stale_approval(
+        prev.approved_sha.as_deref(),
+        &r.sha,
+        opened
+            .as_ref()
+            .is_ok_and(|o| o.approvals["user_has_approved"] == true),
+    );
     let action = gate(
         &r,
         &rep,
@@ -983,10 +997,26 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
         prev.approved_sha.as_deref(),
         &st.following,
         &cfg,
+        stale,
     );
     set(&mut st, &key, &r.sha, "done", "");
     let e = st.mrs.get_mut(&key).unwrap();
+    let revoked = if stale && action != Action::Approve {
+        let res = mrs::write("POST", &format!("{base}/unapprove"), &json!({}));
+        if res.is_ok() {
+            e.approved_sha = None;
+        }
+        Some(res)
+    } else {
+        None
+    };
     let notice = match action {
+        Action::Approve if stale => {
+            e.approved_sha = Some(r.sha.clone());
+            e.wait_threads = false;
+            e.why = rep.summary.clone();
+            None
+        }
         Action::Approve => approve(&r, e, &rep.summary),
         Action::Resolve => {
             ask_threads(&r, e, &rep.summary);
@@ -1018,6 +1048,17 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
             Some(short)
         }
     };
+    let notice = match revoked {
+        Some(Ok(_)) => Some(format!(
+            "tirei minha aprovação · {}",
+            notice.unwrap_or_default()
+        )),
+        Some(Err(err)) => {
+            e.why = format!("não consegui tirar a aprovação ({err}) · {}", e.why);
+            Some("não consegui tirar a aprovação".into())
+        }
+        None => notice,
+    };
     e.report = Some(rep);
     e.commented = true;
     e.cost = cost;
@@ -1048,6 +1089,14 @@ mod gate_tests {
                 .collect(),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn aprovacao_da_ia_em_sha_antiga() {
+        assert!(stale_approval(Some("s1"), "s2", true));
+        assert!(!stale_approval(Some("s2"), "s2", true));
+        assert!(!stale_approval(None, "s2", true));
+        assert!(!stale_approval(Some("s1"), "s2", false));
     }
 
     #[test]

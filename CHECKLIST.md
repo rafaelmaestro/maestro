@@ -416,6 +416,7 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 
 - [x] Confiança sai do gate (fica só no relatório); MRs barrados só por ela passam no gate de novo pelo relatório salvo
 - [x] Infra no diff (Terraform, Pub/Sub, IAM) não segura a aprovação sozinha: completa e certa aprova; faltando algo vira achado `major` e comentário
+- [x] Commit novo depois da aprovação da IA: se a nova revisão não aprova (comentou, threads abertas, revise você), a IA tira a própria aprovação
 
 ## Backlog (não entra sem decisão)
 
