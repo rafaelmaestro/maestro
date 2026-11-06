@@ -18,6 +18,8 @@ pub struct Config {
     pub never_approve: Vec<String>,
     /// nomes (ou ids) de conexão do dbx com credencial só de leitura
     pub read_only_connections: Vec<String>,
+    /// autor → prefixos de path: fora deles, MR desse autor não entra na revisão automática
+    pub author_only_in: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl Default for Config {
@@ -28,6 +30,7 @@ impl Default for Config {
             auto_comment: true,
             never_approve: vec!["ctbz/devops/".into()],
             read_only_connections: vec![],
+            author_only_in: Default::default(),
         }
     }
 }
@@ -43,6 +46,12 @@ impl Config {
         let p = config_path();
         let _ = std::fs::create_dir_all(p.parent().unwrap());
         let _ = std::fs::write(p, serde_json::to_string_pretty(self).unwrap());
+    }
+
+    pub fn out_of_scope(&self, author: &str, path: &str) -> bool {
+        self.author_only_in
+            .get(author.trim_start_matches('@'))
+            .is_some_and(|ps| !ps.iter().any(|p| path.starts_with(p.as_str())))
     }
 
     pub fn load() -> Config {
@@ -899,6 +908,16 @@ pub fn next(rows: &[Row], force: bool, only: Option<&str>) -> (Option<(Row, Valu
         {
             continue;
         }
+        if !forced && cfg.out_of_scope(&r.who, &r.path) {
+            set(
+                &mut st,
+                &key,
+                &r.sha,
+                "ignored",
+                "autor fora do escopo da revisão automática",
+            );
+            continue;
+        }
         let base = format!("projects/{}/merge_requests/{}", mrs::enc(&r.path), r.iid);
         let Ok(detail) = mrs::read(&base, false) else {
             continue;
@@ -1086,6 +1105,17 @@ mod gate_tests {
                 .collect(),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn autor_fora_do_escopo() {
+        let cfg = Config {
+            author_only_in: [("bot".to_string(), vec!["g/a/".to_string()])].into(),
+            ..Config::default()
+        };
+        assert!(cfg.out_of_scope("@bot", "g/b/x"));
+        assert!(!cfg.out_of_scope("@bot", "g/a/x"));
+        assert!(!cfg.out_of_scope("@zé", "g/b/x"));
     }
 
     #[test]
