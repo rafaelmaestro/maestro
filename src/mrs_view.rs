@@ -365,6 +365,7 @@ impl MrsView {
             return;
         }
         self.ai_busy = true;
+        let full = only.is_some();
         cx.spawn(async move |this, cx| {
             let bg = cx.background_executor().clone();
             let pick = bg
@@ -385,7 +386,9 @@ impl MrsView {
                 cx.notify();
             });
             let Some((r, d)) = pick else { return };
-            let (out, ok) = bg.spawn(async move { crate::ai_review::run(r, d) }).await;
+            let (out, ok) = bg
+                .spawn(async move { crate::ai_review::run(r, d, full) })
+                .await;
             let _ = this.update(cx, |this, cx| {
                 this.ai_busy = false;
                 this.ai = crate::ai_review::State::load();
