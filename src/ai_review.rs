@@ -949,6 +949,65 @@ pub fn next(rows: &[Row], force: bool, only: Option<&str>) -> (Option<(Row, Valu
 
 /// Revisa o MR escolhido por `next`. Devolve (chave, texto) para notificar quando precisa de você
 /// e se a revisão chegou ao fim.
+/// O 👀 no MR enquanto a revisão roda: avisa o time (e as IAs dele) que alguém está revisando.
+struct Eyes(String);
+
+impl Drop for Eyes {
+    fn drop(&mut self) {
+        let _ = mrs::write("DELETE", &self.0, &json!({}));
+    }
+}
+
+fn eyes(base: &str) -> Option<Eyes> {
+    let v = mrs::write(
+        "POST",
+        &format!("{base}/award_emoji"),
+        &json!({"name": "eyes"}),
+    )
+    .ok()?;
+    Some(Eyes(format!("{base}/award_emoji/{}", v["id"].as_u64()?)))
+}
+
+/// Espera (até 10 min) quem pôs 👀 nos últimos 15 min terminar, para deduplicar em cima do que publicar.
+fn wait_others(base: &str, me: &str) {
+    for _ in 0..20 {
+        let now = crate::news::now();
+        let busy = mrs::read(&format!("{base}/award_emoji"), false)
+            .ok()
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default()
+            .iter()
+            .any(|a| {
+                a["name"] == "eyes"
+                    && a["user"]["username"] != me
+                    && a["created_at"]
+                        .as_str()
+                        .and_then(crate::news::epoch)
+                        .is_some_and(|t| now.saturating_sub(t) < 900)
+            });
+        if !busy {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(30));
+    }
+}
+
+/// Quem já comentou no mesmo arquivo a até 10 linhas do achado.
+fn dup(f: &Finding, discussions: &Value) -> Option<String> {
+    let line = f.line? as i64;
+    discussions
+        .as_array()?
+        .iter()
+        .flat_map(|d| d["notes"].as_array().into_iter().flatten())
+        .find(|n| {
+            n["position"]["new_path"].as_str() == Some(f.file.as_str())
+                && n["position"]["new_line"]
+                    .as_i64()
+                    .is_some_and(|l| (l - line).abs() <= 10)
+        })
+        .map(|n| format!("@{}", n["author"]["username"].as_str().unwrap_or_default()))
+}
+
 fn stale_approval(ai_sha: Option<&str>, sha: &str, approved: bool) -> bool {
     approved && ai_sha.is_some_and(|s| s != sha)
 }
@@ -966,6 +1025,7 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
         .map(|_| prev.sha.clone());
     let base = format!("projects/{}/merge_requests/{}", mrs::enc(&r.path), r.iid);
     let notes = mrs::read(&format!("{base}/notes?per_page=100"), true).unwrap_or_default();
+    let _eyes = eyes(&base);
     let out = std::sync::Mutex::new(Err("o Claude parou sem devolver o relatório".to_string()));
     mrs::review(
         &r.path,
@@ -981,8 +1041,12 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
             _ => {}
         },
     );
+    let out = out.into_inner().unwrap();
+    if out.is_ok() {
+        wait_others(&base, &mrs::me().unwrap_or_default());
+    }
     let mut st = State::load();
-    let (mut rep, cost) = match out.into_inner().unwrap() {
+    let (mut rep, cost) = match out {
         Ok(x) => x,
         Err(e) => {
             set(&mut st, &key, &r.sha, "skip", &format!("{FAILED}{e}"));
@@ -1041,18 +1105,34 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
             Some("pronto para aprovar, pedi para resolverem as threads".into())
         }
         Action::Comment(f, why) => {
-            let (n, res) = post(&r, &r.sha, &opened, &f);
-            e.posted = n;
-            e.why = posted_why(n, &res, &why);
-            let head = if rep.verdict == "changes" {
-                "pediu mudanças"
+            let seen =
+                mrs::read(&format!("{base}/discussions?per_page=100"), true).unwrap_or_default();
+            let mut by: Vec<String> = f.iter().filter_map(|x| dup(x, &seen)).collect();
+            by.sort();
+            by.dedup();
+            let why = if by.is_empty() {
+                why
             } else {
-                "revise você"
+                format!("já levantado por {} · {why}", by.join(", "))
             };
-            Some(match &res {
-                Ok(()) => format!("{head} · {}", e.why.split(" · ").next().unwrap_or_default()),
-                Err(_) => format!("{head} · comentários não saíram"),
-            })
+            let f: Vec<Finding> = f.into_iter().filter(|x| dup(x, &seen).is_none()).collect();
+            if f.is_empty() {
+                e.why = why;
+                Some("revise você · o que achei já foi comentado".into())
+            } else {
+                let (n, res) = post(&r, &r.sha, &opened, &f);
+                e.posted = n;
+                e.why = posted_why(n, &res, &why);
+                let head = if rep.verdict == "changes" {
+                    "pediu mudanças"
+                } else {
+                    "revise você"
+                };
+                Some(match &res {
+                    Ok(()) => format!("{head} · {}", e.why.split(" · ").next().unwrap_or_default()),
+                    Err(_) => format!("{head} · comentários não saíram"),
+                })
+            }
         }
         Action::Human(why) => {
             let short = if why.starts_with(NO_DB) {
@@ -1118,6 +1198,30 @@ mod gate_tests {
         assert!(cfg.out_of_scope("@bot", "g/b/x"));
         assert!(!cfg.out_of_scope("@bot", "g/a/x"));
         assert!(!cfg.out_of_scope("@zé", "g/b/x"));
+    }
+
+    #[test]
+    fn achado_ja_comentado() {
+        let f = Finding {
+            file: "a.ts".into(),
+            line: Some(50),
+            ..Default::default()
+        };
+        let at = |path: &str, line: u32| {
+            json!([{"notes": [{"author": {"username": "zé"},
+                "position": {"new_path": path, "new_line": line}}]}])
+        };
+        assert_eq!(dup(&f, &at("a.ts", 50)).as_deref(), Some("@zé"));
+        assert_eq!(dup(&f, &at("a.ts", 60)).as_deref(), Some("@zé"));
+        assert!(dup(&f, &at("a.ts", 61)).is_none());
+        assert!(dup(&f, &at("b.ts", 50)).is_none());
+        assert!(
+            dup(
+                &f,
+                &json!([{"notes": [{"author": {"username": "zé"}, "position": null}]}])
+            )
+            .is_none()
+        );
     }
 
     #[test]

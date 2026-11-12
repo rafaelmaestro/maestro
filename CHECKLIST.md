@@ -421,6 +421,7 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] `author_only_in` no config: MR de um autor (ex.: bot) fora dos prefixos listados não entra na revisão automática; "Revisar agora" continua funcionando
 - [x] Descrição desatualizada vira `nit` (só relatório); comenta só divergência que engana quem aprova/opera (comportamento novo para cliente/operação não descrito, promessa que o diff não cumpre)
 - [x] Barra alta: descrição nunca comenta (divergência grave/checklist aberto só seguram pelo check `desc`); `minor` comenta e segura só com `post` (efeito concreto em produção); não repete ponto já levantado ou respondido
+- [x] 👀 no MR enquanto revisa (sai no fim, inclusive em falha); espera até 10 min quem pôs 👀 nos últimos 15 min; antes de publicar relê as discussões e descarta achado com nota de qualquer autor no mesmo arquivo a ±10 linhas
 
 ## Backlog (não entra sem decisão)
 
