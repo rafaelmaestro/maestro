@@ -551,7 +551,8 @@ pub fn may_approve(f: &Facts) -> Result<(), String> {
     }
     if r.findings
         .iter()
-        .any(|x| matches!(x.severity.as_str(), "blocker" | "major" | "minor"))
+        .any(|x| matches!(x.severity.as_str(), "blocker" | "major"))
+        || !bar(r).is_empty()
     {
         return Err("tem achado para o autor resolver".into());
     }
@@ -633,6 +634,7 @@ fn bar(r: &Report) -> Vec<Finding> {
     r.findings
         .iter()
         .filter(|x| x.post && !x.outside && x.line.is_some())
+        .filter(|x| x.category != "desc")
         .filter(|x| matches!(x.severity.as_str(), "blocker" | "major" | "minor"))
         .cloned()
         .collect()
@@ -1304,6 +1306,7 @@ mod gate_tests {
                 f("minor", "sec", true, Some(3)),
                 f("major", "perf", false, Some(4)),
                 f("blocker", "sec", true, None),
+                f("minor", "correct", false, Some(5)),
             ],
             ..ok_report()
         };
@@ -1339,6 +1342,25 @@ mod gate_tests {
             }),
             Action::Comment(..)
         ));
+        let small = Report {
+            verdict: "approve".into(),
+            findings: vec![
+                f("minor", "correct", false, Some(5)),
+                f("minor", "desc", true, Some(6)),
+                f("nit", "read", true, Some(7)),
+            ],
+            ..ok_report()
+        };
+        assert!(bar(&small).is_empty());
+        let mine = ["zé".to_string()];
+        assert_eq!(
+            decide(&Facts {
+                report: &small,
+                following: &mine,
+                ..facts
+            }),
+            Action::Approve
+        );
         let quiet = Config {
             auto_comment: false,
             ..Config::default()
