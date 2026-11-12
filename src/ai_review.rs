@@ -459,6 +459,8 @@ pub struct Entry {
     pub commented: bool,
     /// pediu no MR para resolver as threads; aprova quando resolverem
     pub wait_threads: bool,
+    /// última sha revisada até o fim e o veredito dela: base da revisão incremental
+    pub last: Option<(String, String)>,
 }
 
 impl Entry {
@@ -854,6 +856,7 @@ fn set(st: &mut State, key: &str, sha: &str, status: &str, why: &str) {
     if e.sha != sha {
         *e = Entry {
             approved_sha: e.approved_sha.take(),
+            last: e.last.take(),
             ..Default::default()
         };
     }
@@ -1012,17 +1015,34 @@ fn stale_approval(ai_sha: Option<&str>, sha: &str, approved: bool) -> bool {
     approved && ai_sha.is_some_and(|s| s != sha)
 }
 
-pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
+/// Commit novo depois de uma revisão que aprovou ou pediu mudanças: revisa só o delta.
+fn since_of(last: Option<&(String, String)>, sha: &str) -> Option<String> {
+    last.filter(|(s, v)| s != sha && matches!(v.as_str(), "approve" | "changes"))
+        .map(|(s, _)| s.clone())
+}
+
+/// Threads que eu abri e ninguém resolveu.
+fn mine_open(discussions: &Value, me: &str) -> bool {
+    discussions.as_array().is_some_and(|ds| {
+        ds.iter().any(|d| {
+            let n = &d["notes"][0];
+            n["resolvable"] == true && n["resolved"] != true && n["author"]["username"] == me
+        })
+    })
+}
+
+pub fn run(r: Row, detail: Value, full: bool) -> (Option<(String, String)>, bool) {
     let cfg = Config::load();
     let now = crate::news::now();
     let st = State::load();
     let key = r.key();
     let prev = st.mrs.get(&key).cloned().unwrap_or_default();
-    let since = prev
-        .report
-        .as_ref()
-        .filter(|p| p.verdict == "approve" && prev.status == "done")
-        .map(|_| prev.sha.clone());
+    let since = if full {
+        None
+    } else {
+        since_of(prev.last.as_ref(), &r.sha)
+    };
+    let from_changes = since.is_some() && prev.last.as_ref().is_some_and(|l| l.1 == "changes");
     let base = format!("projects/{}/merge_requests/{}", mrs::enc(&r.path), r.iid);
     let notes = mrs::read(&format!("{base}/notes?per_page=100"), true).unwrap_or_default();
     let _eyes = eyes(&base);
@@ -1081,8 +1101,22 @@ pub fn run(r: Row, detail: Value) -> (Option<(String, String)>, bool) {
         &cfg,
         stale,
     );
+    // o delta passou, mas a revisão anterior pediu mudanças: só aprova com os meus comentários resolvidos
+    let action = if action == Action::Approve
+        && from_changes
+        && mine_open(
+            &mrs::read(&format!("{base}/discussions?per_page=100"), true).unwrap_or_default(),
+            &mrs::me().unwrap_or_default(),
+        ) {
+        Action::Human(
+            "o que mudou está ok, mas os meus comentários anteriores seguem abertos".into(),
+        )
+    } else {
+        action
+    };
     set(&mut st, &key, &r.sha, "done", "");
     let e = st.mrs.get_mut(&key).unwrap();
+    e.last = Some((r.sha.clone(), rep.verdict.clone()));
     let revoked = if stale && action != Action::Approve {
         let res = mrs::write("POST", &format!("{base}/unapprove"), &json!({}));
         if res.is_ok() {
@@ -1222,6 +1256,20 @@ mod gate_tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn revisao_incremental() {
+        let l = |v: &str| Some(("s1".to_string(), v.to_string()));
+        assert_eq!(since_of(l("approve").as_ref(), "s2").as_deref(), Some("s1"));
+        assert_eq!(since_of(l("changes").as_ref(), "s2").as_deref(), Some("s1"));
+        assert!(since_of(l("needs_human").as_ref(), "s2").is_none());
+        assert!(since_of(l("approve").as_ref(), "s1").is_none());
+        assert!(since_of(None, "s2").is_none());
+        let d = |by: &str, resolved: bool| json!([{"notes": [{"resolvable": true, "resolved": resolved, "author": {"username": by}}]}]);
+        assert!(mine_open(&d("eu", false), "eu"));
+        assert!(!mine_open(&d("eu", true), "eu"));
+        assert!(!mine_open(&d("zé", false), "eu"));
     }
 
     #[test]

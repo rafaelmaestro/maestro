@@ -220,7 +220,9 @@ pub fn prompt(
 ) -> String {
     let diff = match since {
         Some(sha) => {
-            format!("git diff {sha}...HEAD (só os commits novos desde a sua última revisão)")
+            format!(
+                "git diff {sha}...HEAD (só os commits novos desde a sua última revisão; comente só linhas que esse diff tocou, mas leia o MR inteiro, git diff origin/{target}...HEAD, para entender o contexto e dar o veredito. Se {sha} não existir mais, por rebase, revise o MR inteiro)"
+            )
         }
         None => format!("git diff origin/{target}...HEAD"),
     };
