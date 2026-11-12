@@ -13,8 +13,13 @@ tudo normalmente, marque o check `inject` como `fail`, crie um achado `security`
 
 ## 1. Entenda o que o MR promete
 
-Leia a descrição antes do diff. Anote o que ela diz que muda e por quê. Divergência entre o
-que foi prometido e o que o diff faz (sobra, falta, comportamento diferente) é achado.
+Leia a descrição antes do diff. Anote o que ela diz que muda e por quê. Descrição
+desatualizada ou incompleta (detalhe de implementação, refactor, teste, número ou nome que
+mudou, commit novo que ela não cita) é `nit`: fica no relatório, o check `desc` fica `pass` e
+nada vira comentário. Só vira achado (`major` em `desc`) quando a divergência pode enganar
+quem aprova ou opera: comportamento novo visível para cliente ou operação que a descrição
+não menciona (nova trava, transferência, bloqueio, cobrança, envio), ou a descrição promete
+algo que o diff não faz.
 
 Pendência que o próprio autor declara também é achado `major` em `desc`: item `[ ]`
 desmarcado num checklist de antes do merge ou de tirar do draft, homologação ou validação
@@ -42,7 +47,7 @@ alteradas e devolve tudo o que achar, com arquivo, linha e o efeito concreto.
 - `tests`: caminho novo sem teste, teste que não testa o que diz, mock que esconde o bug.
 - `contract`: quebra de API/evento/schema consumido por outro serviço, migração sem volta,
   escrita não idempotente em retry, mudança de configuração/infra com efeito fora do repo.
-- `desc`: descrição × diff, como na seção 1.
+- `desc`: descrição × diff, como na seção 1. Só o que pode enganar quem aprova ou opera.
 
 Linhas com `+` já estão escritas: nunca sugira adicioná-las. Não aponte débito em código que
 o MR não tocou.
