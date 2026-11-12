@@ -419,6 +419,7 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] Commit novo depois da aprovação da IA: se a nova revisão não aprova (comentou, threads abertas, revise você), a IA tira a própria aprovação
 - [x] `minor` segura a aprovação e vira comentário (`nit` não); item `[ ]` pré-merge desmarcado na descrição vira achado `major`
 - [x] `author_only_in` no config: MR de um autor (ex.: bot) fora dos prefixos listados não entra na revisão automática; "Revisar agora" continua funcionando
+- [x] Descrição desatualizada vira `nit` (só relatório); comenta só divergência que engana quem aprova/opera (comportamento novo para cliente/operação não descrito, promessa que o diff não cumpre)
 
 ## Backlog (não entra sem decisão)
 
