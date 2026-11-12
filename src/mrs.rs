@@ -239,7 +239,6 @@ Comentários que JÁ existem neste MR — humanos e de outras ferramentas de rev
 NOTES
 
 Se houver skill de code review disponível (ex.: /code-review) ou instruções em CLAUDE.md / .claude/ deste repo, siga-as — elas mandam mais que este prompt.
-Compare o que a descrição promete com o que o diff faz: sobra, falta ou divergência é achado.
 
 Cada achado vira um comentário separado e tem que se sustentar sozinho.
 - file/line: caminho relativo à raiz do repo e linha DO ARQUIVO NOVO, que precisa aparecer no diff (adicionada ou de contexto). Sem linha exata: line null.
