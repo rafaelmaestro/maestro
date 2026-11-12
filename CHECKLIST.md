@@ -428,6 +428,7 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] Barra alta: descrição nunca comenta (divergência grave/checklist aberto só seguram pelo check `desc`); `minor` comenta e segura só com `post` (efeito concreto em produção); não repete ponto já levantado ou respondido
 - [x] 👀 no MR enquanto revisa (sai no fim, inclusive em falha); espera até 10 min quem pôs 👀 nos últimos 15 min; antes de publicar relê as discussões e descarta achado com nota de qualquer autor no mesmo arquivo a ±10 linhas
 - [x] Re-revisão incremental: commit novo depois de approve/changes revisa só o delta (comenta só nele); needs_human e "Revisar agora" revisam tudo; vindo de changes, só aprova com os meus comentários resolvidos
+- [x] "Revisar agora" roda mesmo com o teto do dia atingido (o teto vale só para a fila automática); antes caía no "MR em draft" sem revisar
 
 ## PRCs (board de chamados com IA)
 

@@ -927,7 +927,7 @@ pub fn next(rows: &[Row], force: bool, only: Option<&str>) -> (Option<(Row, Valu
         let Ok(detail) = mrs::read(&base, false) else {
             continue;
         };
-        let (status, why) = if forced && st.spent < cfg.daily_budget {
+        let (status, why) = if forced {
             pick = Some((r.clone(), detail));
             ("run", "revisando")
         } else if detail["draft"] == true {
