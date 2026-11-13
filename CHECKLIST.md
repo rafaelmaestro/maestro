@@ -433,8 +433,13 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 ## PRCs (board de chamados com IA)
 
 - [x] Protótipo: tela PRCs (Alt+8, depois de Bancos), coluna Análise (IA) com resultado completo (diagnóstico, contingência sem código, ACR), detalhe do card com a sessão do Claude, mover card muda o status no Jira
-- [ ] Ler o board pelo Jira (config em `~/.config/maestro/prc.json`, fora do repo)
-- [ ] Análise, contingência com aprovação e detalhe com a sessão espelhada
+- [x] Ler o board pelo Jira (config em `~/.config/maestro/prc.json`, fora do repo)
+  - Carga real medida em 2026-11-13: 25 cards, 8 colunas, ~13 s e US$ 0,012 (haiku, parse do `tool_result`). ACR pelo tipo de vínculo da config (`acr_link`): os humanos ligam nos dois sentidos.
+- [x] Análise, contingência com aprovação e detalhe com a sessão espelhada
+  - Aprovação verificada em 2026-11-13 com `claude -p`: com os settings normais, `glab api -X POST` rodava direto (allow do usuário); a sessão isolada (`--setting-sources local`, cwd na pasta da sessão, MCPs por `--mcp-config`) pede aprovação para todo Bash e MCP, nega Edit/Write nos repos e as edições do ripwire, e libera leitura, Jira só leitura e o `result.json`. A pasta de repos tem `settings.local.json` com `Bash(git *)` e `Bash(python3 -)`: por isso o cwd não pode ser ela.
+  - Teste no app com `claude` falso (ZDOTDIR põe o falso no PATH do pane): aba `PRC-1 · análise`, resultado no card, detalhe com passos e Yes/No com o agente bloqueado, `e` chegou ao pane, marca `exec` sobrevive a reabrir o app, edição em `prcs/` aparece na Atividade com desfazer.
+  - Leitura sem pedir aprovação (2026-11-13, a pedido do Rafael: "incomoda e muito"): hook `prc-guard` libera Bash só de leitura (`git -C … log`, `cd … && git log`, `rg 'a|b' | head`), SELECT e schema do dbx; medido que `; touch`, redirecionamento para fora da sessão e escrita em repo continuam pedindo ou negados.
+  - Não exercitado: clique em Yes/No e em Encerrar (o usuário estava usando a máquina; teclas mandadas direto à janela, sem foco). Desvio: o detalhe não mostra a descrição do card (o board não busca descrição; a IA lê o card na análise).
 - [ ] Criar ACR e Nova feature a partir dela
 - Desvio combinado: coluna com dois status ("com dev / fornecedor") usa o primeiro ao soltar; trocar por escolha se fizer falta
 

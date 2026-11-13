@@ -169,7 +169,15 @@ const PRC_HINTS: &[(&str, &str, bool)] = &[
     ("Alt+8", "PRCs", true),
     ("h l", "coluna", true),
     ("j k", "card", true),
-    ("arraste", "outra coluna (muda no Jira)", true),
+    (
+        "arraste",
+        "Análise (IA) ou outra coluna (muda no Jira)",
+        true,
+    ),
+    ("a", "analisar", true),
+    ("e", "executar contingência", true),
+    ("c", "criar ACR", true),
+    ("Enter", "detalhe e sessão", true),
     ("o", "abrir no Jira", true),
     ("r", "atualizar", true),
 ];
@@ -307,7 +315,8 @@ impl Shell {
             },
         )
         .detach();
-        let prc = cx.new(|cx| PrcView::new(theme.clone(), cx));
+        let prc_herdr = sidebar.as_ref().map(|s| s.read(cx).herdr());
+        let prc = cx.new(|cx| PrcView::new(theme.clone(), prc_herdr, cx));
         cx.subscribe(
             &prc,
             |this: &mut Self, _, e: &prc_view::Event, cx| match e {

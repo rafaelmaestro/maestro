@@ -87,6 +87,13 @@ fn main() {
         }
         return;
     }
+    // `maestro prc-guard`: o hook PreToolUse da sessão de PRC libera SQL e schema só de leitura no dbx
+    if args.get(1).map(String::as_str) == Some("prc-guard") {
+        let mut stdin = String::new();
+        let _ = std::io::Read::read_to_string(&mut std::io::stdin(), &mut stdin);
+        prc::guard_main(&stdin);
+        return;
+    }
     // `maestro sql-guard`: o hook PreToolUse do revisor barra SQL de escrita e conexão fora da lista
     if args.get(1).map(String::as_str) == Some("sql-guard") {
         let mut stdin = String::new();
