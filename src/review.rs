@@ -45,6 +45,8 @@ pub enum Redo {
     MrDraft,
     /// "Não relevante" no News: (tag, fonte) volta a aparecer
     News((String, String)),
+    /// card movido no board de PRCs: (key, status atual, status anterior)
+    PrcMove(String, String, String),
 }
 
 pub enum Event {

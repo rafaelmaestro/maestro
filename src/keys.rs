@@ -4,13 +4,13 @@ use gpui_kit::Keystroke;
 /// Ctrl+Shift+- fica de fora: é o ^_ (desfazer) do readline e do nano.
 pub fn is_app_shortcut(k: &Keystroke) -> bool {
     let m = &k.modifiers;
-    // Alt+N: nova feature, como no protótipo; Alt+1…6: os modos do título; Alt+7: nota nova; Alt+T/W/[/]: abas de trabalho
+    // Alt+N: nova feature, como no protótipo; Alt+1…6 e Alt+8: os modos do título; Alt+7: nota nova; Alt+T/W/[/]: abas de trabalho
     (m.alt
         && !m.control
         && !m.shift
         && matches!(
             k.key.as_str(),
-            "n" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "t" | "w" | "[" | "]"
+            "n" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "t" | "w" | "[" | "]"
         ))
         || feature_digit(k).is_some()
         || m.control
@@ -146,6 +146,7 @@ mod tests {
         assert!(is_app_shortcut(&ks("alt-t")));
         assert!(is_app_shortcut(&ks("alt-6")));
         assert!(is_app_shortcut(&ks("alt-7")));
+        assert!(is_app_shortcut(&ks("alt-8")));
         assert!(is_app_shortcut(&ks("alt-]")));
         assert!(!is_app_shortcut(&ks("alt-b")));
     }

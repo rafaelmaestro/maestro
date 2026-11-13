@@ -36,6 +36,8 @@ mod notes;
 mod palette;
 mod palette_cmd;
 mod perms;
+mod prc;
+mod prc_view;
 mod preflight;
 mod review;
 mod session;
