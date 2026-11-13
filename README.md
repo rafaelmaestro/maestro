@@ -126,6 +126,9 @@ O dia a dia é o Claude Code no terminal. O editor serve para **revisar depois**
 - O board de chamados de cliente do Jira em colunas, lido ao entrar na tela e pelo **Atualizar**, sem polling.
 - **Arrastar** um card para outra coluna muda o status no Jira, com **Desfazer**; soltar na coluna de conclusão fecha o chamado.
 - O card mostra a ACR (análise de causa raiz) ligada e marca **◆ receita** quando a base de conhecimento do vault (`prcs/<label>.md`) já tem uma nota para aquele tipo de chamado.
+- **Análise (IA)**: arrastar o card para a coluna (ou `a`) abre o Claude numa aba do herdr, que lê o chamado, a receita e os seus repos e devolve de uma vez o diagnóstico, a **contingência sem código** e a solução definitiva (**ACR** com repo e arquivo). O resultado aparece no card.
+- **Executar contingência** (`e`) roda os passos na mesma sessão, cada comando só com a sua aprovação: a sessão não carrega as suas regras `allow` e não edita os repos. **Criar ACR** (`c`) monta o card da ACR pela receita do vault.
+- Clicar no card (ou Enter) abre o detalhe com os passos e a sessão do Claude espelhada: dá para aprovar, recusar e escrever para ele sem sair da tela.
 
 ## Instalação
 
