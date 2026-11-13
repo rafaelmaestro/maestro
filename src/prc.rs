@@ -155,6 +155,37 @@ const READS: [&str; 4] = [
     "listJiraIssueComments",
 ];
 
+/// Shell só de leitura: o hook libera sem pedir quando todas as partes do comando começam por um destes.
+/// Regra de prefixo no settings não serve: `cat a > b` passaria por `Bash(cat:*)`.
+const BASH_READ: &[&str] = &[
+    "git status",
+    "git log",
+    "git show",
+    "git diff",
+    "git blame",
+    "git ls-files",
+    "git grep",
+    "git rev-parse",
+    "rg",
+    "grep",
+    "cat",
+    "head",
+    "tail",
+    "ls",
+    "wc",
+    "jq",
+    "tree",
+    "stat",
+    "file",
+    "pwd",
+    "which",
+    "glab mr view",
+    "glab mr list",
+    "glab mr diff",
+    "glab issue view",
+    "glab ci view",
+];
+
 /// Sem os settings de usuário nem os da pasta de repos, todo Bash e todo MCP pedem aprovação;
 /// aqui só se libera leitura e o resultado, e se nega editar os repos.
 pub fn settings_json(session: &Path, repos: &Path) -> String {
@@ -173,7 +204,108 @@ pub fn settings_json(session: &Path, repos: &Path) -> String {
         "mcp__ripwire__insert_after_symbol".into(),
         "mcp__ripwire__insert_before_symbol".into(),
     ];
-    serde_json::json!({ "permissions": { "allow": allow, "deny": deny } }).to_string()
+    let exe = std::env::current_exe().unwrap_or_default();
+    serde_json::json!({
+        "permissions": { "allow": allow, "deny": deny },
+        "hooks": { "PreToolUse": [ {
+            "matcher": "Bash|mcp__dbx__.*",
+            "hooks": [ { "type": "command", "command": format!("{} prc-guard", crate::feature::sh_quote(&exe.to_string_lossy())) } ]
+        } ] }
+    })
+    .to_string()
+}
+
+/// O hook PreToolUse do dbx na sessão de PRC: consulta só de leitura roda sem pedir;
+/// escrita fica com o Claude Code, que pede aprovação (a contingência pode precisar escrever).
+pub fn guard(stdin: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(stdin).ok()?;
+    let tool = v["tool_name"].as_str()?;
+    if tool == "Bash" {
+        return read_only_bash(v["tool_input"]["command"].as_str()?).then(|| "shell".into());
+    }
+    if tool == "mcp__dbx__dbx_execute_query" {
+        crate::ai_review::read_only_sql(v["tool_input"]["sql"].as_str()?)
+            .is_none()
+            .then(|| "SELECT".into())
+    } else {
+        const READ: [&str; 7] = [
+            "dbx_list_connections",
+            "dbx_list_databases",
+            "dbx_list_tables",
+            "dbx_describe_table",
+            "dbx_get_schema_context",
+            "dbx_list_routines",
+            "dbx_get_routine_source",
+        ];
+        READ.iter()
+            .any(|r| tool == format!("mcp__dbx__{r}"))
+            .then(|| "leitura de schema".into())
+    }
+}
+
+/// `true` só se cada parte (`;`, `&&`, `||`, `|`, linhas) é `cd` ou começa por um comando de leitura,
+/// sem redirecionamento nem substituição. Na dúvida, `false`: o Claude Code pergunta.
+pub fn read_only_bash(cmd: &str) -> bool {
+    let cmd = &unquote(cmd);
+    const BAD: [&str; 8] = [">", "`", "$(", "<(", "--output", "--pre", "--exec", "\\"];
+    if BAD.iter().any(|b| cmd.contains(b)) {
+        return false;
+    }
+    let parts = cmd
+        .split(['\n', ';', '|'])
+        .flat_map(|p| p.split("&&"))
+        .map(str::trim)
+        .filter(|p| !p.is_empty());
+    let mut any = false;
+    for p in parts {
+        any = true;
+        let mut w: Vec<&str> = p.split_whitespace().collect();
+        if w.first() == Some(&"git") && w.get(1) == Some(&"-C") && w.len() > 3 {
+            w.drain(1..3);
+        }
+        let line = w.join(" ");
+        let ok = w.first() == Some(&"cd")
+            || BASH_READ
+                .iter()
+                .chain(crate::audit::PROD_READ)
+                .any(|c| line == *c || line.starts_with(&format!("{c} ")));
+        if !ok {
+            return false;
+        }
+    }
+    any
+}
+
+/// O conteúdo entre aspas vira `Q`: `>` e `|` dentro de um filtro ou regex não são redirecionamento nem pipe.
+/// Aspas sem fechar deixam o resto como está, e aí a checagem tende a recusar.
+fn unquote(cmd: &str) -> String {
+    let mut out = String::new();
+    let mut quote: Option<char> = None;
+    for c in cmd.chars() {
+        match quote {
+            Some(q) if c == q => quote = None,
+            Some(_) => {}
+            None if c == '\'' || c == '"' => {
+                quote = Some(c);
+                out.push('Q');
+            }
+            None => out.push(c),
+        }
+    }
+    out
+}
+
+pub fn guard_main(stdin: &str) {
+    if let Some(r) = guard(stdin) {
+        println!(
+            "{}",
+            serde_json::json!({ "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+                "permissionDecisionReason": format!("só leitura ({r})")
+            } })
+        );
+    }
 }
 
 /// Os MCPs de usuário (`mcpServers` do `~/.claude.json`) somem com `--setting-sources local`.
@@ -365,8 +497,64 @@ mod tests {
         assert!(
             !allow
                 .iter()
-                .any(|a| a.starts_with("Bash") || a.contains("dbx"))
+                .any(|a| a.contains("dbx") || a.starts_with("Bash"))
         );
+        assert_eq!(v["hooks"]["PreToolUse"][0]["matcher"], "Bash|mcp__dbx__.*");
+        assert!(
+            v["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+                .as_str()
+                .unwrap()
+                .ends_with(" prc-guard")
+        );
+        let q = |t: &str, sql: &str| {
+            guard(&serde_json::json!({"tool_name": t, "tool_input": {"sql": sql}}).to_string())
+        };
+        assert!(
+            q(
+                "mcp__dbx__dbx_execute_query",
+                "select * from t where id = 1"
+            )
+            .is_some()
+        );
+        assert_eq!(q("mcp__dbx__dbx_execute_query", "update t set a = 1"), None);
+        assert_eq!(
+            q("mcp__dbx__dbx_execute_query", "select 1; delete from t"),
+            None
+        );
+        assert!(q("mcp__dbx__dbx_describe_table", "").is_some());
+        assert_eq!(q("mcp__dbx__dbx_execute_batch", "select 1"), None);
+        for ok in [
+            "git -C /r/app log -1 --oneline",
+            "cd /r/app && git log -3",
+            "rg -l export src | head -3",
+            "gcloud logging read 'severity>=ERROR AND timestamp>=\"2026-11-01\"' --limit 5",
+            "rg -n 'foo|bar' src",
+            "kubectl logs pod-1 --tail 50",
+        ] {
+            assert!(read_only_bash(ok), "{ok}");
+        }
+        for no in [
+            "cat a > b",
+            "cat 'a' >b",
+            "rg 'x' \"y\" | sh",
+            "git log -1; touch x",
+            "rg x | xargs rm",
+            "rg --pre sh x",
+            "git diff --output=/tmp/x",
+            "echo $(rm -rf x)",
+            "glab api -X POST x",
+            "kubectl get secrets -o yaml",
+            "git -C /r push",
+            "",
+        ] {
+            assert!(!read_only_bash(no), "{no}");
+        }
+        let b = |c: &str| {
+            guard(
+                &serde_json::json!({"tool_name": "Bash", "tool_input": {"command": c}}).to_string(),
+            )
+        };
+        assert!(b("git log -1").is_some() && b("rm -rf /").is_none());
         assert!(
             deny.contains(&"Edit(//h/repos/**)") && deny.contains(&"NotebookEdit(//h/repos/**)")
         );
