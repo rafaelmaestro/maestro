@@ -429,6 +429,14 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] 👀 no MR enquanto revisa (sai no fim, inclusive em falha); espera até 10 min quem pôs 👀 nos últimos 15 min; antes de publicar relê as discussões e descarta achado com nota de qualquer autor no mesmo arquivo a ±10 linhas
 - [x] Re-revisão incremental: commit novo depois de approve/changes revisa só o delta (comenta só nele); needs_human e "Revisar agora" revisam tudo; vindo de changes, só aprova com os meus comentários resolvidos
 
+## PRCs (board de chamados com IA)
+
+- [x] Protótipo: tela PRCs (Alt+8, depois de Bancos), coluna Análise (IA) com resultado completo (diagnóstico, contingência sem código, ACR), detalhe do card com a sessão do Claude, mover card muda o status no Jira
+- [ ] Ler o board pelo Jira (config em `~/.config/maestro/prc.json`, fora do repo)
+- [ ] Análise, contingência com aprovação e detalhe com a sessão espelhada
+- [ ] Criar ACR e Nova feature a partir dela
+- Desvio combinado: coluna com dois status ("com dev / fornecedor") usa o primeiro ao soltar; trocar por escolha se fizer falta
+
 ## Backlog (não entra sem decisão)
 
 - Conflitos entre features (ripwire branch conflicts)

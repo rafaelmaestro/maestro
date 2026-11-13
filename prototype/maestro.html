@@ -523,6 +523,76 @@ legend{color:var(--muted);font-size:12px;padding:0 4px}
 .prof div{display:flex;justify-content:space-between;gap:8px}
 .prof .mono{font-size:12px}
 
+/* PRCs: board do Jira + IA */
+.kb{flex:1;display:flex;gap:10px;overflow:auto;padding:10px 12px;min-height:0;align-items:flex-start}
+.kcol{flex:0 0 250px;background:var(--panel);border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;max-height:100%;min-height:0}
+.kcol.done{flex-basis:170px}
+.kcol.done .kcards .none{border:1.5px dashed var(--line);border-radius:6px;padding:14px 8px;text-align:center}
+.kcol h4{margin:0;padding:8px 10px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;display:flex;gap:8px;border-bottom:1px solid var(--line)}
+.kcol h4 .sp{flex:1}.kcol h4 .mono{text-transform:none;letter-spacing:0}
+.kcol.cur h4{color:var(--fg)}
+.kcol.ia{border-style:dashed;background:transparent}
+.kcol.wide{flex-basis:340px}
+.kcard .res{display:grid;gap:5px;font-size:12px;border-top:1px solid var(--line);padding-top:6px}
+.kcard .res p{margin:0;color:var(--fg)}
+.kcard .res p.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.kcard .res .ri{display:flex;gap:8px;align-items:baseline}
+.kcard .res .rk{flex:none;width:86px;font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+.kcard .res .rk.sc{color:var(--cyan)}.kcard .res .rk.sa{color:var(--pink)}
+.kcard .res ol{margin:0;padding-left:112px;color:var(--muted)}
+.kcol.ia h4{color:var(--fg);flex-wrap:wrap;row-gap:2px}
+.kcol.ia h4 .why{flex-basis:100%;text-transform:none;letter-spacing:0;font-size:11.5px;color:var(--muted);font-weight:400}
+.kcol.ia.cont h4::before{content:"●";color:var(--cyan)}.kcol.ia.acr h4::before{content:"●";color:var(--pink)}
+.kcol.over{border-color:var(--accent);background:var(--accent-soft)}
+.kcol.ia .kcards .none{border:1.5px dashed var(--line);border-radius:6px;padding:14px 8px;text-align:center}
+.kcard .js{font:11px var(--sans);color:var(--muted)}
+.kcard .run{font-size:11.5px;display:flex;gap:6px;align-items:center}
+.kcard .run.w8{color:var(--orange)}.kcard .run.go{color:var(--cyan)}.kcard .run.ok{color:var(--ok)}
+.kcards{overflow:auto;padding:6px;display:grid;gap:6px;align-content:start}
+.kcards .none{color:var(--comment);font-size:12px;padding:4px}
+.kcard{background:var(--raise);border:1px solid var(--line);border-radius:6px;padding:8px 10px;display:grid;gap:5px;cursor:grab;text-align:left}
+.kcard:hover{border-color:var(--muted)}
+.kcard.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.kcard.drag{opacity:.4}
+.kcard .kh{display:flex;gap:6px;align-items:center;font:11.5px var(--mono);color:var(--comment)}
+.kcard .kh .sp{flex:1}
+.kcard .kh .rc{color:var(--ok);font-family:var(--sans)}
+.kcard .tt{font-size:13px;line-height:1.35}
+.kcard .lb{display:flex;gap:4px;flex-wrap:wrap}
+.kcard .lb .pill{font-size:10.5px;padding:0 6px}
+.kcard .acr{font:11.5px var(--mono);color:var(--accent)}
+.kcard .acr span{color:var(--muted);font-family:var(--sans)}
+.kcard .ses{display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px}
+.kcard .ses .sc{color:var(--cyan)}.kcard .ses .sa{color:var(--pink)}
+.kcard .ka{display:flex;gap:4px;flex-wrap:wrap;padding-top:2px}
+.kcard .ka .btn{font-size:11.5px;padding:1px 7px}
+.drops{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:8px 12px 10px;border-top:1px solid var(--line);flex:none}
+.drop{border:1.5px dashed var(--line);border-radius:8px;padding:8px 12px;display:grid;gap:2px;color:var(--muted);font-size:12px}
+.drop b{color:var(--fg);font-weight:500;font-size:13px;display:flex;gap:8px;align-items:center}
+.drop b kbd{margin-left:auto}
+.drop.dcont b::before{content:"●";color:var(--cyan)}.drop.dacr b::before{content:"●";color:var(--pink)}
+.drop.over{border-color:var(--accent);background:var(--accent-soft);color:var(--fg)}
+.cfgx{font:12.5px/1.5 var(--mono);background:var(--panel);border-radius:6px;padding:10px 12px;text-align:left;color:var(--fg);margin:0}
+.pdet{width:min(620px,100%)}
+.pdet .db{gap:14px}
+.pdet .sec{display:grid;gap:6px}
+.pdet .sec h5{margin:0;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;display:flex;gap:8px}
+.pdet .sec h5.sc{color:var(--cyan)}.pdet .sec h5.sa{color:var(--pink)}
+.pdet .sec p{margin:0}
+.pdet .ev{font:12px var(--mono);color:var(--muted);display:grid;gap:2px}
+.pdet .steps2{display:grid;gap:4px;margin:0;padding:0;list-style:none}
+.pdet .steps2 li{display:grid;grid-template-columns:18px minmax(0,1fr);gap:6px;font-size:12.5px}
+.pdet .steps2 .g{font:12px var(--mono);text-align:center}
+.pdet .steps2 .ok{color:var(--ok)}.pdet .steps2 .w8{color:var(--orange)}.pdet .steps2 .pd{color:var(--comment)}
+.pdet .steps2 li.w8 span:last-child{color:var(--fg)}.pdet .steps2 li.pd span:last-child{color:var(--muted)}
+.pdet .pterm{background:var(--term-bg);border:1px solid var(--line);border-radius:6px;font:12.5px/1.4 var(--mono);display:flex;flex-direction:column;min-height:220px;max-height:340px}
+.pdet .pterm .tbody{padding:8px 10px}
+.pdet .pterm .th2{display:flex;gap:8px;padding:4px 10px;border-bottom:1px solid #191a21;color:var(--comment);font-size:11.5px}
+.pdet .pterm .th2 .sp{flex:1}
+.pdet .pterm .tin{margin:0 8px 8px}
+.kbnote{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;width:100%;text-align:left;padding:3px 12px;font:12px var(--mono)}
+.kbnote:hover{background:var(--raise)}.kbnote .k{color:var(--comment);font-family:var(--sans);font-size:11px}
+
 @media (max-width:760px){
   .main,.main[data-right="on"]{grid-template-columns:minmax(0,1fr);grid-template-areas:"center"}
   #left{position:absolute;inset:0 25% 0 0;z-index:6;box-shadow:var(--shadow)}
@@ -546,6 +616,7 @@ legend{color:var(--muted);font-size:12px;padding:0 4px}
       <button id="mFeat" aria-pressed="true">Features<span class="count" id="attCount"></span></button>
       <button id="mMrs" aria-pressed="false">MRs<span class="count" id="mrCount" style="color:var(--accent)"></span></button>
       <button id="mDb" aria-pressed="false" title="Alt+3 · túneis cloud-sql-proxy dos aliases sql_* do zsh">Bancos<span class="count" id="dbCount" style="color:var(--ok)"></span></button>
+      <button id="mPrc" aria-pressed="false" title="Alt+8 · board de PRCs (chamados de cliente) com IA">PRCs<span class="count" id="prcCount" style="color:var(--orange)"></span></button>
       <button id="mVault" aria-pressed="false">Vault</button>
       <button id="mNews" aria-pressed="false" title="Alt+5">News<span class="count" id="newsCount" style="color:var(--cyan)"></span></button>
     </nav>
@@ -874,13 +945,14 @@ function renderFrame(){
   if(S.rw) m.style.setProperty('--rw',m.dataset.right==='on'?S.rw+'px':'0px');
   $('#mFeat').setAttribute('aria-pressed',S.mode==='feat'||S.mode==='audit'); $('#mMrs').setAttribute('aria-pressed',S.mode==='mrs'||S.mode==='mr'); $('#mVault').setAttribute('aria-pressed',S.mode==='vault');
   $('#mNews').setAttribute('aria-pressed',S.mode==='news'); $('#mNews').classList.toggle('dim',!S.newsToken);
+  $('#mPrc').setAttribute('aria-pressed',S.mode==='prc'); $('#prcCount').textContent=PRC.noCfg?'':PRCS.filter(c=>c.st==='Backlog').length||'';
   $('#mDb').setAttribute('aria-pressed',S.mode==='db'); $('#dbCount').textContent=DBS.filter(d=>d.st==='up').length||'';
   $('#newsCount').textContent=S.newsToken?newsShown().filter(n=>n.aff.length&&!n.read).length||'':'';
   const att=FEATS.filter(f=>f.st==='blocked').length; $('#attCount').textContent=att?`${att} !`:'';
   $('#qCount').textContent=attention().length||'';
   $('#mrCount').textContent=MRS.filter(m=>m.g==='rev'&&!isReviewed(m)).length;
 }
-function render(){ renderWorks(); renderFrame(); renderLeft(); renderCenter(); renderRight(); renderHints(); renderStatus(); maybeTour(); }
+function render(){ if(typeof PRC!=='undefined'&&PRC.open&&S.mode==='prc') setTimeout(prcDetail); else if(typeof PRC!=='undefined'&&PRC.open) prcClose(); renderWorks(); renderFrame(); renderLeft(); renderCenter(); renderRight(); renderHints(); renderStatus(); maybeTour(); }
 function setMode(m){ S.mode=m; if(m==='vault'&&!S.vview) S.vview='note'; render(); }
 
 /* ---------- lateral ---------- */
@@ -890,6 +962,7 @@ function renderLeft(){
   if (S.mode==='vault') return renderVaultTree(el);
   if (S.mode==='news') return renderNewsLeft(el);
   if (S.mode==='db') return renderDbLeft(el);
+  if (S.mode==='prc') return renderPrcLeft(el);
   if (S.mode!=='feat'&&S.mode!=='audit'){ el.innerHTML=''; return; }
   const f=feat();
   let h=`<div class="repo">${REPO} <span class="mono">${ROOT}</span></div><div class="feats"><button class="feat ${S.mode==='audit'?'on':''}" id="audBtn"><span class="g ${AU.phase==='run'?'st-working spin':'cm'}">${AU.phase==='run'?'◐':'◇'}</span><span class="b">Auditoria</span><span class="k">${AU.phase==='run'?'rodando':AU.last.when}</span><span class="m">${AU.phase==='run'?'US$ '+AU.spent.toFixed(2).replace('.',','):AU.last.commits?AU.last.commits+' commits desde a última':'em dia'}</span></button></div><div class="phead">Features<span class="sp"></span><span class="mono" style="text-transform:none;letter-spacing:0">${FEATS.length}</span></div><div class="feats" role="listbox" aria-label="Features">`;
@@ -952,6 +1025,160 @@ function renderDb(el){
   const off=$('#dbOff'); if(off) off.onclick=()=>{ DBS.forEach(d=>{ if(d.st==='up') d.st='off'; }); toast('Bancos desligados'); render(); };
   $('#dbq').oninput=e=>{ S.dbq=e.target.value; S.dbsel=0; const p=e.target.selectionStart; renderDb(el); const i=$('#dbq'); i.focus(); i.setSelectionRange(p,p); };
 }
+/* ---------- PRCs ---------- */
+const PRC_COLS=[{n:'Análise (IA)',ia:true,why:'diagnóstico, contingência sem código e ACR se precisar'},
+  {n:'Triagem',st:['Backlog']},{n:'Pronto p/ ajuste',st:['To-do']},{n:'Ajuste em andamento',st:['Em andamento']},{n:'Ajuste pausado',st:['Paused']},
+  {n:'Com dev / ACR / fornecedor',st:['Aguardando Dev','Aguardando fornecedor']},{n:'Com negócio',st:['Aguardando negócio']},
+  {n:'Cliente resolvido',st:['Concluído'],done:true},{n:'Transferido ou arquivado',st:['Transferido','Archived'],done:true}];
+const PRCS=[
+  {key:'PRC-101',t:'E-mails do cliente não estão chegando',st:'Backlog',lb:['falha_envio_email','escalado']},
+  {key:'PRC-105',t:'Pesquisa de satisfação enviada depois de transbordo',st:'Backlog',lb:[]},
+  {key:'PRC-108',t:'Falha no recebimento de e-mails / pedido de allowlist',st:'Backlog',lb:['falha_recebimento_email','escalado']},
+  {key:'PRC-103',t:'Alteração de e-mail do responsável',st:'To-do',lb:['alteracao_email']},
+  {key:'PRC-106',t:'Desbloqueio de e-mail',st:'Em andamento',lb:['falha_envio_email'],
+    an:{diag:'O endereço do cliente entrou na lista de supressão do provedor depois de 3 bounces em 02/11.',cont:['Tirar o endereço da lista de supressão do provedor','Reenviar os 3 e-mails retidos desde 02/11'],acr:null,noAcr:'bounce pontual do servidor do cliente; o código tratou certo',
+    ev:['provedor: 3 bounces "mailbox full" de cliente@exemplo.com em 02/11','email-service/src/bounce.ts:31 suprime após 3 bounces, como esperado']},exec:'w8',step:0,
+    desc:'Cliente diz que parou de receber os e-mails de guias e lembretes desde o começo do mês. Já conferiu spam.'},
+  {key:'PRC-107',t:'Erro ao entregar e-mail',st:'Paused',lb:['escalado']},
+  {key:'PRC-102',t:'Cliente preso no atendimento por IA',st:'Aguardando Dev',lb:['ia_falha_transbordo'],
+    an:{diag:'O app formata o documento como chave Pix e a IA não reconhece o CNPJ, então nunca transborda.',cont:['Transbordar a conversa atual para um humano','Marcar o contato para pular a IA por 7 dias'],acr:{causa:'Formatação automática quebra a identificação do documento',repo:'atendimento-api',loc:'src/identify.ts:42'},
+    ev:['atendimento-api/src/identify.ts:42 testa o documento com /^\\d{14}$/ e recebe "12.345.678/0001-90"','logs: 41 conversas presas na IA nos últimos 7 dias com o mesmo padrão']},acrCard:{key:'ACR-9',st:'Backlog'},
+    desc:'Cliente informa o CNPJ e a IA pede de novo, em loop. Não consegue falar com um humano.'},
+  {key:'PRC-104',t:'Não consegue atendimento pelo WhatsApp',st:'Aguardando negócio',lb:['conectividade_whatsapp']},
+];
+const PRC_KB=['falha_envio_email','ia_falha_transbordo','alteracao_email'];
+const PRC={col:1,sel:0,upd:'14:32',loading:false,err:null,noCfg:false,drag:null};
+const prcCols=()=>PRC_COLS;
+const prcIn=col=>col.done?[]:col.ia?PRCS.filter(c=>c.an):PRCS.filter(c=>col.st.includes(c.st)&&!c.an);
+const prcCur=()=>{ const col=prcCols()[PRC.col]; return col?prcIn(col)[PRC.sel]:null; };
+const prcRecipe=c=>c.lb.filter(l=>PRC_KB.includes(l));
+function renderPrcLeft(el){
+  el.innerHTML=`<div class="repo">PRCs <span class="mono">${PRC.noCfg?'sem config':'board 123'}</span></div>
+    <div class="feats">${PRC.noCfg?'':prcCols().map((c,i)=>`<button class="feat ${i===PRC.col&&!c.done?'on':''}" data-pcol="${i}" ${c.done?'disabled style="opacity:.45;cursor:default"':''}><span class="g cm">${c.done?'✓':'·'}</span><span class="b" style="font-family:var(--sans);${c.ia?'color:var(--cyan)':''}">${c.n}</span><span class="k">${c.done||PRC.noCfg?'':prcIn(c).length}</span></button>`).join('')}</div>
+    <div class="phead">Base de conhecimento<span class="sp"></span><span class="mono" style="text-transform:none;letter-spacing:0">vault/prcs/</span></div>
+    <div class="flist">${PRC_KB.map(n=>`<button class="kbnote" data-kbn="${n}"><span>${n}.md</span><span class="k">${PRCS.filter(c=>c.lb.includes(n)).length||''}</span></button>`).join('')}
+      <button class="kbnote" data-kbn="_acr"><span>_acr.md</span><span class="k">como criar a ACR</span></button>
+      <div class="none">Uma nota por tipo de PRC, com o nome da label do card. A IA recebe a receita do card e, no fim de cada sessão, propõe atualizar a nota (com sua aprovação).</div></div>`;
+  el.querySelectorAll('[data-pcol]').forEach(b=>b.onclick=()=>{ PRC.col=+b.dataset.pcol; PRC.sel=0; render(); });
+  el.querySelectorAll('[data-kbn]').forEach(b=>b.onclick=()=>toast(`Abriria prcs/${b.dataset.kbn}.md no Vault`));
+}
+const PRC_EXEC={w8:['w8','! pede sua aprovação: passo'],paused:['w8','! passo recusado: o Claude espera instrução'],kb:['w8','! pede aprovação: atualizar a receita'],ok:['ok','✓ contingência aplicada · receita atualizada']};
+function prcResult(c){ const a=c.an; if(a==='go') return `<div class="run go">◐ Claude analisando: card, receita e repos…</div>`;
+  const ex0=c.exec&&PRC_EXEC[c.exec], ex=ex0&&(c.exec==='w8'?[ex0[0],`${ex0[1]} ${c.step+1} de ${c.an.cont.length}`]:ex0);
+  return `<div class="res"><p class="clamp">${esc(a.diag)}</p>
+    <div class="ri"><span class="rk sc">Contingência</span>${a.cont?`<span>${a.cont.length} passo${a.cont.length>1?'s':''} sem código</span>`:'<span class="muted">nenhuma sem código</span>'}</div>
+    <div class="ri"><span class="rk sa">ACR</span>${c.acrCard?`<span class="mono" style="color:var(--accent)">${c.acrCard.key}</span><span class="muted">criada</span>`:a.acr?`<span><span class="mono">${a.acr.repo}</span> · a criar</span>`:'<span class="muted">não precisa</span>'}</div>
+    ${ex?`<div class="run ${ex[0]}">${ex[1]}</div>`:''}</div>`; }
+function prcCard(c,on,ia){ const rc=prcRecipe(c);
+  return `<div class="kcard ${on?'on':''}" draggable="true" data-pk="${c.key}" title="Clique para o detalhe e a sessão; arraste para Análise (IA) ou para outra coluna (muda o status no Jira)">
+    <div class="kh">${c.key}<span class="sp"></span>${rc.length?`<span class="rc" title="receita conhecida: prcs/${rc[0]}.md">◆ receita</span>`:''}</div>
+    <div class="tt">${esc(c.t)}</div>
+    ${ia?`<div class="js">no Jira: ${c.st}</div>`:''}
+    ${c.lb.length?`<div class="lb">${c.lb.map(l=>`<span class="pill">${l}</span>`).join('')}</div>`:''}
+    ${ia?prcResult(c):''}
+    ${on?`<div class="ka">${!ia?`<button class="btn pri" data-pan="${c.key}">Analisar <kbd>a</kbd></button>`
+      :c.an==='go'?`<button class="btn" data-pso="${c.key}">Detalhe e sessão</button>`
+      :`${c.an.cont&&c.exec!=='ok'?`<button class="btn pri" data-pex="${c.key}">${c.exec?'Ver execução':'Executar contingência'} <kbd>e</kbd></button>`:''}${c.an.acr&&!c.acrCard?`<button class="btn" data-pac="${c.key}">Criar ACR <kbd>c</kbd></button>`:''}${c.acrCard?`<button class="btn" data-pn="${c.key}">Nova feature <kbd>n</kbd></button>`:''}<button class="btn" data-pso="${c.key}">Detalhe e sessão</button><button class="btn danger" data-px="${c.key}">Encerrar</button>`}<button class="btn" data-po="${c.key}">Jira ↗</button></div>`:''}
+  </div>`; }
+function renderPrc(el){
+  if(PRC.noCfg){ el.innerHTML=`<div class="empty"><h3>Nenhum board configurado</h3><p>Crie <span class="mono">~/.config/maestro/prc.json</span> com o id do board de PRCs no Jira e a pasta dos seus repos. Fica fora do repo do Maestro.</p><pre class="cfgx">{
+  "board": 123,
+  "repos": "~/repos"
+}</pre><p>Depois, <kbd>r</kbd> ou "PRCs: atualizar".</p></div>`; return; }
+  const cs=prcCols(); if(PRC.col>=cs.length||cs[PRC.col].done) PRC.col=1; const open=PRCS.length;
+  el.innerHTML=`<div class="ibar"><span class="muted" style="font-size:12px">${open} abertos · só os não concluídos</span><span class="sp"></span>
+      ${PRC.err?`<span style="color:var(--bad);font-size:12px">Falha ao carregar: ${esc(PRC.err)} · mostrando a carga das ${PRC.upd}</span>`:`<span class="muted" style="font-size:12px">${PRC.loading?'atualizando…':`atualizado às ${PRC.upd}`}</span>`}
+      <button class="btn" id="prcUp" ${PRC.loading?'disabled':''}>↻ Atualizar</button></div>
+    <div class="kb" id="kb">${cs.map((col,i)=>{ const xs=prcIn(col); return `<section class="kcol ${col.done?'done':''} ${col.ia?'ia cont wide':''} ${i===PRC.col?'cur':''}" data-kc="${i}"><h4>${col.n}<span class="sp"></span><span class="mono">${col.done?'':xs.length}</span>${col.ia?`<span class="why">${col.why}</span>`:''}</h4>
+      <div class="kcards">${col.done?'<div class="none">solte aqui para concluir no Jira</div>':xs.length?xs.map((c,k)=>prcCard(c,i===PRC.col&&k===PRC.sel,col.ia)).join(''):col.ia?'<div class="none">arraste um card aqui <kbd>a</kbd></div>':'<div class="none">vazio</div>'}</div></section>`; }).join('')}</div>`;
+  $('#prcUp').onclick=()=>prcRefresh();
+  el.querySelectorAll('.kcard').forEach(n=>{ const key=n.dataset.pk;
+    n.onclick=e=>{ if(e.target.closest('button')) return; const ci=+n.closest('[data-kc]').dataset.kc, c=PRCS.find(x=>x.key===key); PRC.col=ci; PRC.sel=prcIn(cs[ci]).indexOf(c); renderCenter(); renderLeft(); prcOpen(key); };
+    n.ondragstart=e=>{ PRC.drag=key; e.dataTransfer.setData('text/plain',key); n.classList.add('drag'); };
+    n.ondragend=()=>{ n.classList.remove('drag'); el.querySelectorAll('.kcol').forEach(d=>d.classList.remove('over')); }; });
+  el.querySelectorAll('.kcol').forEach(d=>{ const col=cs[+d.dataset.kc];
+    d.ondragover=e=>{ e.preventDefault(); d.classList.add('over'); }; d.ondragleave=e=>{ if(!d.contains(e.relatedTarget)) d.classList.remove('over'); };
+    d.ondrop=e=>{ e.preventDefault(); d.classList.remove('over'); const key=e.dataTransfer.getData('text/plain')||PRC.drag; if(!key) return;
+      if(col.ia) prcAnalyze(key); else prcMove(key,col); }; });
+  const on=(a,f)=>el.querySelectorAll(`[data-${a}]`).forEach(b=>b.onclick=()=>f(b.dataset[a.replace(/-./g,m=>m[1].toUpperCase())]));
+  on('pan',prcAnalyze); on('pex',prcExec); on('pac',prcAcr); on('pn',prcFeature); on('px',prcEnd);
+  on('pso',prcOpen); on('po',k=>toast(`Abriria https://<site>/browse/${k}`));
+  const cur=el.querySelector('.kcard.on'); if(cur) cur.scrollIntoView({block:'nearest',inline:'nearest'});
+}
+function prcLog(c){ const rc=prcRecipe(c), L=[{c:'u',t:`Analise o ${c.key}: ${c.t}`},{c:'dot',t:'⏺ getJiraIssue('+c.key+') · descrição e 4 comentários'},{c:'dot',t:`⏺ Read(~/vault/prcs/${rc[0]||''}${rc.length?'.md':''})`},{c:'out',t:'  ⎿  receita: '+(rc.length?'confirmar no provedor, depois tirar da supressão':'nenhuma nota bate; procurei em prcs/')}];
+  if(c.an==='go'){ L.push({c:'think',t:'✻ Analisando… (esc para interromper)'}); return L; }
+  (c.an.ev||[]).forEach(e=>L.push({c:'dot',t:'⏺ Grep / dbx_execute_query (só leitura)'},{c:'out',t:'  ⎿  '+e}));
+  L.push({c:'dotw',t:'⏺ Resultado gravado: diagnóstico, '+(c.an.cont?c.an.cont.length+' passos de contingência':'sem contingência')+', '+(c.an.acr?'ACR em '+c.an.acr.repo:'sem ACR')+'.'});
+  if(c.exec){ L.push({c:'u',t:'Execute a contingência proposta, um passo por vez.'});
+    for(let i=0;i<(c.step||0);i++) L.push({c:'dot',t:`⏺ Passo ${i+1} de ${c.an.cont.length}: ${c.an.cont[i]}`},{c:'out',t:'  ⎿  feito'});
+    if(c.exec==='w8') L.push({c:'dot',t:`⏺ Passo ${c.step+1} de ${c.an.cont.length}: ${c.an.cont[c.step]}`});
+    if(c.exec==='kb') L.push({c:'dotw',t:'⏺ Contingência aplicada. Proponho registrar na base:'});
+    if(c.exec==='ok') L.push({c:'dotw',t:'⏺ Contingência aplicada e receita atualizada.'}); }
+  (c.chat||[]).forEach(x=>L.push(x)); return L; }
+const PRC_CMD=['curl -X DELETE https://api.provedor.exemplo/v3/suppressions/cliente@exemplo.com','email-cli resend --to cliente@exemplo.com --since 2026-11-02'];
+function prcPerm(c){ if(c.exec==='w8') return {h:'Bash command',cmd:PRC_CMD[c.step]||'…',why:c.an.cont[c.step]};
+  if(c.exec==='kb') return {h:'Edit file',cmd:`~/vault/prcs/${prcRecipe(c)[0]||'novo'}.md  (+1 linha em Histórico)`,why:`${new Date().toISOString().slice(0,10)} · ${c.key} · supressão por bounce; tirado da lista e reenviado`};
+  return null; }
+function prcOpen(key){ PRC.open=key; prcDetail(); }
+function prcClose(){ PRC.open=null; $('#prcDet')?.remove(); }
+function prcDetail(){ const c=PRCS.find(x=>x.key===PRC.open); $('#prcDet')?.remove(); if(!c){ PRC.open=null; return; }
+  const a=c.an&&c.an!=='go'?c.an:null, pm=a&&prcPerm(c), rc=prcRecipe(c);
+  const stepG=i=>!c.exec?['pd','·']:i<(c.step||0)||c.exec==='ok'||c.exec==='kb'?['ok','✓']:i===c.step&&c.exec==='w8'?['w8','!']:['pd','·'];
+  const d=document.createElement('aside'); d.className='drawer pdet'; d.id='prcDet'; d.setAttribute('aria-label','Detalhe do '+c.key);
+  d.innerHTML=`<div class="dh"><span class="mono muted">${c.key}</span><b>${esc(c.t)}</b><span class="sp"></span><button class="btn" id="pdX" aria-label="Fechar">Esc</button></div>
+    <div class="db">
+      <div class="sec"><h5>Jira<span class="sp"></span><span class="mono" style="text-transform:none;letter-spacing:0">${c.st}</span></h5><p>${esc(c.desc||'Sem descrição no card.')}</p>
+        ${c.lb.length?`<div class="lb" style="display:flex;gap:4px;flex-wrap:wrap">${c.lb.map(l=>`<span class="pill">${l}</span>`).join('')}${rc.length?`<span class="pill" style="color:var(--ok);border-color:var(--ok)">◆ prcs/${rc[0]}.md</span>`:''}</div>`:''}</div>
+      ${!c.an?`<div class="sec"><h5>Análise</h5><p class="muted">Ainda não analisado. Arraste para Análise (IA) ou use o botão abaixo.</p></div>`
+      :!a?`<div class="sec"><h5>Análise</h5><p class="muted">◐ O Claude está analisando: card, receita, repos e produção só leitura.</p></div>`
+      :`<div class="sec"><h5>Diagnóstico</h5><p>${esc(a.diag)}</p>${a.ev?`<div class="ev">${a.ev.map(x=>`<span>· ${esc(x)}</span>`).join('')}</div>`:''}</div>
+      <div class="sec"><h5 class="sc">Contingência sem código${c.exec==='ok'||c.exec==='kb'?'<span class="sp"></span><span style="color:var(--ok)">aplicada</span>':''}</h5>${a.cont?`<ol class="steps2">${a.cont.map((x,i)=>{ const [k,g]=stepG(i); return `<li class="${k}"><span class="g ${k}">${g}</span><span>${esc(x)}${k==='w8'?' <span style="color:var(--orange)">· pede sua aprovação</span>':''}</span></li>`; }).join('')}</ol>`:'<p class="muted">Nenhuma: o cliente só destrava com mudança de código.</p>'}</div>
+      <div class="sec"><h5 class="sa">ACR</h5>${a.acr?`<p>${esc(a.acr.causa)}</p><div class="ev"><span>· ${a.acr.repo} · ${a.acr.loc}</span></div>${c.acrCard?`<p class="mono" style="color:var(--accent)">${c.acrCard.key} <span class="muted" style="font-family:var(--sans)">· criada · ${c.acrCard.st}</span></p>`:''}`:`<p class="muted">Não precisa: ${esc(a.noAcr||'')}</p>`}</div>`}
+      ${c.an?`<div class="sec"><h5>Sessão do Claude<span class="sp"></span><span class="mono" style="text-transform:none;letter-spacing:0">aba "${c.key} · análise"</span></h5>
+        <div class="pterm term"><div class="tbody" id="pdLog">${prcLog(c).map(l=>`<div class="${l.c}">${esc(l.t)}</div>`).join('')}
+          ${pm?`<div class="perm" role="group" aria-label="Pedido de permissão"><span class="h">${pm.h}</span><span class="cmd">  ${esc(pm.cmd)}</span><span class="out">  ${esc(pm.why)}</span><span style="margin-top:4px">Do you want to proceed?</span><button class="on" data-pp="1">❯ 1. Yes</button><button data-pp="3">  2. No, and tell Claude what to do differently (esc)</button></div>`:''}</div>
+          <div class="tin"><span>&gt;</span><input id="pdIn" class="tin-in" autocomplete="off" aria-label="Mensagem para o Claude da análise de ${c.key}" placeholder="${pm?'responda 1 ou 2 acima, ou escreva para o Claude':'escreva para o Claude'}"></div></div></div>`:''}
+    </div>
+    <div class="df">${!c.an?`<button class="btn pri" id="pdA">Analisar <kbd>a</kbd></button>`:a?`${a.cont&&!c.exec?`<button class="btn pri" id="pdE">Executar contingência <kbd>e</kbd></button>`:''}${a.acr&&!c.acrCard?`<button class="btn" id="pdC">Criar ACR <kbd>c</kbd></button>`:''}${c.acrCard?`<button class="btn" id="pdN">Nova feature <kbd>n</kbd></button>`:''}<button class="btn" id="pdS">Abrir em tela cheia</button><button class="btn danger" id="pdEnd">Encerrar</button>`:''}<span class="sp"></span><button class="btn" id="pdJ">Jira ↗</button></div>`;
+  $('#app').appendChild(d);
+  const lg=$('#pdLog'); if(lg) lg.scrollTop=lg.scrollHeight;
+  const b=(id,f)=>{ const x=$('#'+id); if(x) x.onclick=f; };
+  b('pdX',prcClose); b('pdA',()=>{ prcAnalyze(c.key); }); b('pdE',()=>{ prcExec(c.key); }); b('pdC',()=>{ prcAcr(c.key); }); b('pdN',()=>{ prcClose(); prcFeature(c.key); });
+  b('pdEnd',()=>{ prcClose(); prcEnd(c.key); }); b('pdS',()=>toast(`Focaria a aba "${c.key} · análise" no herdr, em tela cheia`)); b('pdJ',()=>toast(`Abriria https://<site>/browse/${c.key}`));
+  d.querySelectorAll('[data-pp]').forEach(x=>x.onclick=()=>prcAnswer(c,x.dataset.pp==='1'));
+  const inp=$('#pdIn'); if(inp){ inp.onkeydown=e=>{ if(e.key==='1'&&pm&&!inp.value){ e.preventDefault(); prcAnswer(c,true); return; } if(e.key==='2'&&pm&&!inp.value){ e.preventDefault(); prcAnswer(c,false); return; }
+    if(e.key==='Enter'&&inp.value.trim()){ (c.chat=c.chat||[]).push({c:'u',t:inp.value.trim()},{c:'dotw',t:'⏺ Entendido. Sigo daqui considerando isso; nada roda sem a sua aprovação.'}); prcDetail(); $('#pdIn')?.focus(); } e.stopPropagation(); }; }
+}
+function prcAnswer(c,yes){
+  if(!yes){ (c.chat=c.chat||[]).push({c:'warn',t:'  ⎿  Recusado. O que prefiro fazer no lugar?'}); c.exec=c.exec==='w8'?'paused':c.exec; toast(`${c.key}: passo recusado; diga ao Claude o que fazer no lugar`); render(); prcDetail(); return; }
+  if(c.exec==='w8'){ c.step++; if(c.step>=c.an.cont.length) c.exec='kb'; }
+  else if(c.exec==='kb'){ c.exec='ok'; toast(`prcs/${prcRecipe(c)[0]||'novo'}.md atualizada · aparece na Atividade do Vault com desfazer`); }
+  render(); prcDetail(); $('#pdIn')?.focus(); }
+function prcMove(key,col){ const c=PRCS.find(x=>x.key===key); if(!c) return; const from=c.st, to=col.st[0];
+  if(col.st.includes(from)){ if(c.an) toast(`${key} já está em ${from} no Jira; segue em análise`); return; }
+  if(key==='PRC-107'&&col.done){ toast(`${key}: o fluxo do Jira não tem transição de ${from} para ${to}. O card fica onde estava.`); return; }
+  toast(`Movendo ${key} para ${to} no Jira…`);
+  setTimeout(()=>{ c.st=to; const i=PRCS.indexOf(c); if(col.done) PRCS.splice(i,1);
+    toast(`${key}: ${from} → ${to} no Jira${col.done?' · saiu do board':c.an?' · segue em análise':''}`,{label:'Desfazer',run:()=>{ c.st=from; if(col.done) PRCS.splice(i,0,c); toast(`${key} voltou para ${from} no Jira`); render(); }});
+    render(); },700); }
+function prcAnalyze(key){ const c=PRCS.find(x=>x.key===key); if(!c) return;
+  if(c.an){ toast(`${key} já está em análise: focando a aba "${key} · análise"`); return; }
+  c.an='go'; PRC.col=0; PRC.sel=prcIn(PRC_COLS[0]).indexOf(c); const rc=prcRecipe(c);
+  toast(`Abrindo ${key} · análise numa aba do herdr: Claude só lê (Jira, ${rc.length?`receita ${rc[0]}.md`:'prcs/'}, repos e produção)`); render();
+  setTimeout(()=>{ c.an={diag:'Os e-mails saem do serviço, mas o domínio do cliente rejeita por falta de SPF no remetente de transação.',cont:['Reenviar pelo remetente principal, que tem SPF','Avisar o cliente para liberar o domínio de transação'],acr:{causa:'Remetente de transação sem SPF configurado',repo:'email-service',loc:'config/senders.ts:18'}}; if(S.mode==='prc') render(); },2500); }
+function prcExec(key){ const c=PRCS.find(x=>x.key===key); if(!c||!c.an||!c.an.cont) return;
+  if(c.exec){ toast(`Focando a aba "${key} · análise": o Claude espera sua aprovação lá`); return; }
+  c.exec='w8'; c.step=0; toast(`${key}: o Claude começa a contingência na mesma aba; cada passo pede sua aprovação`); renderCenter(); }
+function prcAcr(key){ const c=PRCS.find(x=>x.key===key); if(!c||!c.an||!c.an.acr||c.acrCard) return;
+  toast(`${key}: o Claude cria a ACR pela receita _acr.md (pede aprovação antes de criar)`);
+  setTimeout(()=>{ c.acrCard={key:'ACR-'+(10+PRCS.indexOf(c)),st:'Backlog'}; if(S.mode==='prc') render(); },1500); }
+function prcEnd(key){ const c=PRCS.find(x=>x.key===key); if(!c) return; c.an=null; c.exec=null; PRC.sel=0;
+  toast(`Análise de ${key} encerrada: a aba do herdr fecha e o card volta para a coluna do Jira`); render(); }
+function prcFeature(key){ const c=PRCS.find(x=>x.key===key); if(!c||!c.acrCard) return; const a=c.an.acr;
+  newFeatureDlg(); $('#nfJ').value=c.acrCard.key; $('#nfB').value=`fix/${c.acrCard.key}-causa-raiz`; $('#nfP').value=`Corrigir a causa raiz de ${c.acrCard.key}: ${a.causa} (${a.loc}).\nLeia a ACR no Jira antes de começar.`; $('#nfJi').textContent=`✓ ${c.acrCard.key} · Análise de Causa raiz · ${a.causa} (${key})`; $('#nfB').oninput(); }
+function prcRefresh(fail){ if(PRC.noCfg){ toast('Sem ~/.config/maestro/prc.json'); return; } PRC.loading=true; PRC.err=null; renderCenter();
+  setTimeout(()=>{ PRC.loading=false; if(fail) PRC.err='MCP do Atlassian indisponível'; else { const d=new Date(); PRC.upd=`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } render(); },1200); }
+
 function startAllDb(){ const xs=DBS.filter(d=>d.st==='off'||d.st==='down'), up=DBS.length-xs.length;
   if(!xs.length){ toast('Todos os bancos já estão de pé'); return; }
   xs.forEach(d=>{ d.st='start'; setTimeout(()=>{ if(d.fail) d.st='down'; else { d.st='up'; d.since='agora'; } render(); },900); });
@@ -1073,6 +1300,7 @@ function renderCenter(){
   if (S.mode==='vault') return renderVaultMain(el);
   if (S.mode==='news') return renderNews(el);
   if (S.mode==='db') return renderDb(el);
+  if (S.mode==='prc') return renderPrc(el);
   const f=feat();
   const keep={}; let foc=null; el.querySelectorAll('.tin-in').forEach(i=>{ keep[i.dataset.t]=i.value; if(i===document.activeElement) foc=i.dataset.t; });
   const shown = f.split && f.tabs.length>1 && f.tab<2 ? [0,1] : [f.tab];
@@ -2523,6 +2751,7 @@ const HINTS={
   vault:[['Alt+7','nova nota'],['Ctrl+Shift+F','formatar com IA'],['clique','abrir nota'],['[[link]]','navegar'],['◎ Grafo','visão geral'],['Hoje','daily'],['?','atalhos']],
   audit:[['Nova auditoria…','incremental ou completa'],['espaço','marcar achado'],['?','atalhos']],
   mr:[['n p','próximo/anterior arquivo'],['V','visto e próximo'],['O','abrir no GitLab'],['R','atualizar'],['C','comentar linha'],['?','perguntar sobre o bloco'],['S','lado a lado/unificado'],['⇧R','revisar com Claude'],['Ctrl+⏎','publicar'],['Ctrl+Z','desfazer descarte'],['Esc','voltar']],
+  prc:[['Alt+8','PRCs'],['h l','coluna'],['j k','card'],['arraste','Análise (IA) ou outra coluna (muda no Jira)'],['a','analisar'],['e','executar contingência'],['c','criar ACR'],['n','Nova feature da ACR'],['clique · Enter','detalhe e sessão'],['o','abrir no Jira'],['r','atualizar']],
   db:[['Alt+3','Bancos'],['j k','navegar'],['Enter','liga/desliga'],['/','filtrar'],['Ctrl+Shift+D','ligar de qualquer tela']],
   news:[['Alt+5','News'],['título','abrir'],['Não relevante','oculta só aqui'],['?','atalhos']],
 };
@@ -2601,6 +2830,10 @@ const CMDS=[
   ['Simular: notificação de MR (resposta à sua thread)','',()=>simNotify(true)],
   ['Ir para: News','Alt+5',openNews],
   ['Ir para: Bancos','Alt+3',()=>setMode('db')],
+  ['Ir para: PRCs','Alt+8',()=>setMode('prc')],
+  ['PRCs: atualizar','r',()=>{ setMode('prc'); prcRefresh(); }],
+  ['Simular: PRCs sem config / com config','',()=>{ PRC.noCfg=!PRC.noCfg; setMode('prc'); }],
+  ['Simular: PRCs falha na carga','',()=>{ setMode('prc'); prcRefresh(true); }],
   ['News: Resumo do dia','',openBrief],
   ['News: Simular sem token / com token','',()=>{ S.newsToken=!S.newsToken; if(!S.newsToken) closeBrief(); render(); toast(S.newsToken?'Token do daily.dev encontrado':'Sem ~/.config/maestro/dailydev.token'); }],
   ['Simular: feature de fundo pede permissão','',()=>{ const f=FEATS.find(x=>x.id!==S.fid&&x.id!=='main'&&x.kind!=='ws'&&x.st!=='blocked'&&x.st!=='working')||FEATS.find(x=>x.id!==S.fid&&x.kind!=='ws'&&x.st!=='blocked'); if(!f){ toast('Todas as outras já estão esperando você'); return; } f.ask='npm run migrate'; f.tab=0; f.term.push({c:'dotw',t:'⏺ Preciso rodar a migration.'}); setSt(f,'blocked','pediu permissão: npm run migrate'); }],
@@ -2655,7 +2888,7 @@ function openHelp(){
       <tr><td>10</td><td><b>▶ Rodar tarefa…</b> na barra do terminal → <span class="mono">build</span>: os erros caem em Problemas.</td></tr>
       <tr><td>11</td><td><kbd>Ctrl+Shift+K</kbd> no terminal: descreva o comando; ele é digitado, nunca executado.</td></tr>
       <tr><td>12</td><td><kbd>Alt+5</kbd> abre News. Respostas a threads suas chegam como toast (e notificação do sistema com a janela fora de foco).</td></tr></table></div>
-    <div><h4>Atalhos desta tela</h4><table>${HINTS[S.mode].concat([['Ctrl+P','abrir arquivo'],['Ctrl+Shift+P','comandos'],['Alt+1…6','Features · MRs · Bancos · Vault · News · Fila'],['Ctrl+Shift+←/→','terminal ↔ editor: na borda do último pane, o foco passa para o editor'],['Shift+Alt+←/→','selecionar por palavra no editor'],['Ctrl+Shift+K','comando por descrição'],['Ctrl+F · Ctrl+H','buscar · substituir no arquivo'],['Ctrl+/','comentar as linhas'],['Alt+↑/↓','mover a linha'],['Ctrl+G','ir para a linha'],['Ctrl+W · Ctrl+Tab','fechar · trocar a aba do editor'],['Árvore','↑/↓, Enter, F2, Delete, Ctrl+C/X/V; arraste para mover']].filter(([k])=>!HINTS[S.mode].some(h=>h[0]===k))).map(([k,v])=>`<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`).join('')}</table>
+    <div><h4>Atalhos desta tela</h4><table>${HINTS[S.mode].concat([['Ctrl+P','abrir arquivo'],['Ctrl+Shift+P','comandos'],['Alt+1…6','Features · MRs · Bancos · Vault · News · Fila'],['Alt+8','PRCs'],['Ctrl+Shift+←/→','terminal ↔ editor: na borda do último pane, o foco passa para o editor'],['Shift+Alt+←/→','selecionar por palavra no editor'],['Ctrl+Shift+K','comando por descrição'],['Ctrl+F · Ctrl+H','buscar · substituir no arquivo'],['Ctrl+/','comentar as linhas'],['Alt+↑/↓','mover a linha'],['Ctrl+G','ir para a linha'],['Ctrl+W · Ctrl+Tab','fechar · trocar a aba do editor'],['Árvore','↑/↓, Enter, F2, Delete, Ctrl+C/X/V; arraste para mover']].filter(([k])=>!HINTS[S.mode].some(h=>h[0]===k))).map(([k,v])=>`<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`).join('')}</table>
       <p style="margin-top:8px"><b>Regra dos atalhos:</b> com o foco no terminal, Ctrl+tecla vai para o terminal (Ctrl+A herdr, Ctrl+C, Ctrl+L, Ctrl+R, Ctrl+E de readline). Ctrl+Shift+tecla é do Maestro, como no seu Ghostty, e os binds de split do seu ghostty/config viram ações do herdr.</p>
       <p style="margin-top:6px">Visual: fonte, paleta, padding, opacidade e cursor vêm do ghostty/config; o prompt vem do starship.toml; <span class="mono">ls</span>/<span class="mono">cat</span> seguem seus aliases eza/bat. No navegador, os ícones Nerd Font só aparecem porque a JetBrainsMono Nerd Font está instalada na sua máquina. Alt+N aqui é o Ctrl+Shift+N do app (o navegador reserva esse).</p></div></div>
     <h4>Heurísticas de Nielsen aplicadas</h4><table>${N.map(([a,b],i)=>`<tr><td>${i+1}. ${a}</td><td>${b}</td></tr>`).join('')}</table>
@@ -2684,6 +2917,7 @@ document.addEventListener('keydown',e=>{
   if(k==='Escape'){
     if(TOUR){ endTour(); return; }
     if(OV){ e.preventDefault(); closeOverlay(); return; }
+    if(PRC.open){ e.preventDefault(); prcClose(); return; }
     if(S.prefix){ S.prefix=false; renderCenter(); return; }
     if(CMPL){ closeCompl(); return; }
     if(ASK){ closeAsk(); return; }
@@ -2700,6 +2934,7 @@ document.addEventListener('keydown',e=>{
   if(OV) return;
   if(ctrl&&e.shiftKey&&e.altKey&&(k==='ArrowLeft'||k==='ArrowRight')&&e.target.id==='code'){ e.preventDefault(); wordSel(e.target,k==='ArrowRight'); return; }
   if(e.altKey&&!ctrl&&e.code==='Digit7'){ e.preventDefault(); newNote(); return; }
+  if(e.altKey&&!ctrl&&e.code==='Digit8'){ e.preventDefault(); setMode('prc'); return; }
   if(ctrl&&e.shiftKey&&k.toLowerCase()==='f'&&S.mode==='vault'&&VAULT[S.vnote]!=null){ e.preventDefault(); formatNote(); return; }
   if(e.altKey&&!ctrl&&/^Digit[1-6]$/.test(e.code)){ e.preventDefault(); [()=>setMode('feat'),()=>setMode('mrs'),()=>setMode('db'),()=>openVault(),openNews,()=>openPal('att')][+e.code.slice(5)-1](); return; }
   if(!ctrl&&!e.altKey&&!e.shiftKey&&!inField&&e.key==='s'&&S.mode==='mr'){ e.preventDefault(); S.layout=S.layout==='split'?'unified':'split'; rerender(); return; }
@@ -2737,6 +2972,16 @@ document.addEventListener('keydown',e=>{
   if(k==='?'){ if(S.sel&&(S.mode==='mr'||(S.mode==='feat'&&S.right&&S.rtab==='review'))){ askFromSel(); return; } openHelp(); return; }
   if(RV&&RV.phase==='setup'&&k==='Enter'){ e.preventDefault(); runReview(); return; }
   if(k==='R'&&e.shiftKey&&S.mode!=='feat'){ startReview(); return; }
+  if(S.mode==='prc'&&!PRC.noCfg){ const cs=prcCols(), col=cs[PRC.col]||cs[0], c=prcCur();
+    const go=(dc,dk)=>{ e.preventDefault(); if(dc){ let i=PRC.col; do{ i+=dc; }while(cs[i]&&cs[i].done); if(cs[i]){ PRC.col=i; PRC.sel=Math.min(PRC.sel,Math.max(prcIn(cs[i]).length-1,0)); } } else PRC.sel=Math.max(0,Math.min(PRC.sel+dk,prcIn(col).length-1)); renderCenter(); };
+    if(k==='h'||k==='ArrowLeft') go(-1,0); else if(k==='l'||k==='ArrowRight') go(1,0);
+    else if(k==='j'||k==='ArrowDown') go(0,1); else if(k==='k'||k==='ArrowUp') go(0,-1);
+    else if(k==='a'&&c) prcAnalyze(c.key); else if(k==='e'&&c) prcExec(c.key); else if(k==='c'&&c) prcAcr(c.key);
+    else if(k==='o'&&c) toast(`Abriria https://<site>/browse/${c.key}`);
+    else if(k==='n'&&c&&c.acrCard) prcFeature(c.key);
+    else if(k==='r') prcRefresh();
+    else if(k==='Enter'&&c) prcOpen(c.key);
+    return; }
   if(S.mode==='db'){ const xs=dbVis();
     if(k==='j'||k==='ArrowDown'){ e.preventDefault(); S.dbsel=Math.min((S.dbsel||0)+1,xs.length-1); renderCenter(); }
     else if(k==='k'||k==='ArrowUp'){ e.preventDefault(); S.dbsel=Math.max((S.dbsel||0)-1,0); renderCenter(); }
@@ -2757,7 +3002,7 @@ document.addEventListener('keydown',e=>{
   if(S.mode==='mr'&&k==='r'){ e.preventDefault(); refreshMR(S.mr); return; }
   if(S.mode==='feat'&&k.length===1&&!(e.target.closest&&e.target.closest('#right'))){ focusTerm(); }
 });
-$('#mVault').onclick=()=>openVault(); $('#mFeat').onclick=()=>setMode('feat'); $('#mMrs').onclick=()=>setMode('mrs'); $('#mNews').onclick=openNews; $('#mDb').onclick=()=>setMode('db');
+$('#mVault').onclick=()=>openVault(); $('#mFeat').onclick=()=>setMode('feat'); $('#mMrs').onclick=()=>setMode('mrs'); $('#mNews').onclick=openNews; $('#mDb').onclick=()=>setMode('db'); $('#mPrc').onclick=()=>setMode('prc');
 $('#qBtn').onclick=()=>openPal('att'); $('#hFile').onclick=()=>openPal('file'); $('#hCmd').onclick=()=>openPal('cmd'); $('#hHelp').onclick=()=>openHelp();
 if(innerWidth<760){ S.left=false; }
 render();
