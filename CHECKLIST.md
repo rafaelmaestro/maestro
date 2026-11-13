@@ -277,6 +277,11 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] `tunnels_view.rs`: lista com status (de pé, subindo, caiu com a última linha do log), Copiar host, Ver log, Desligar todos
 - [x] Shell: modo no título com contagem, Alt+6, Ctrl+Shift+D, comandos na paleta, dicas, "N bancos" na barra de status
 - [x] Teste no app com aliases falsos: liga, cai, desliga, sobrevive ao fechar o app e é reconhecido ao reabrir
+- [x] Ligar todos: botão na barra (quando há parado) e "Banco: ligar todos" na paleta; liga só desligados/caídos, de qualquer ambiente, com um toast de resumo
+- [x] Ao abrir o Maestro, sobe todos os parados depois da primeira checagem de portas (não reinicia nem zera o log de quem já está de pé); a sessão de teste (`MAESTRO_HERDR_SESSION`) não sobe nada
+- [x] Teste no app com aliases falsos: na sessão de teste nada subiu sozinho; "Banco: ligar todos" subiu os 2 parados e manteve o PID do que já estava de pé
+- [ ] Conferir com o Rafael: abrir o Maestro de verdade e ver os túneis subirem sem reiniciar os que já estavam de pé; clicar em Ligar todos na aba Bancos e rodar "Banco: ligar todos" a partir de Features (no teste só rodou pela paleta dentro de Bancos)
+- [ ] Republicar o artifact do protótipo com o botão Ligar todos
 
 ## Árvore de arquivos editável (extensão: o protótipo não cobre)
 

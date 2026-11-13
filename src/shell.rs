@@ -2660,6 +2660,9 @@ impl Shell {
                 self.tunnels.update(cx, |t, cx| t.toggle(&name, cx));
                 return cx.notify();
             }
+            Cmd::TunnelsOn => {
+                self.tunnels.update(cx, |t, cx| t.start_all(cx));
+            }
             Cmd::TunnelsOff => {
                 self.tunnels.update(cx, |t, cx| t.stop_all(cx));
                 return cx.notify();

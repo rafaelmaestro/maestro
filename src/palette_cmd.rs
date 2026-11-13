@@ -67,6 +67,7 @@ pub enum Cmd {
     /// Ctrl+Shift+D: o seletor de bancos, de qualquer tela
     DbMenu,
     Tunnel(String),
+    TunnelsOn,
     TunnelsOff,
     /// "+" / Alt+T: a lista de repos para a aba nova
     RepoMenu,
@@ -188,6 +189,7 @@ pub fn commands() -> Vec<Item> {
         c("News: Resumo do dia", "", Some(NewsBrief)),
         c("Ir para: Bancos", "Alt+3", Some(Db)),
         c("Banco: ligar ou desligar…", "Ctrl+Shift+D", Some(DbMenu)),
+        c("Banco: ligar todos", "", Some(TunnelsOn)),
         c("Banco: desligar todos", "", Some(TunnelsOff)),
         c("Ajuda: Atalhos e decisões de UX", "?", Some(Help)),
         c("Terminal: Rodar tarefa…", "", Some(TaskMenu)),
