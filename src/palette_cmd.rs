@@ -69,6 +69,9 @@ pub enum Cmd {
     Tunnel(String),
     TunnelsOn,
     TunnelsOff,
+    /// Alt+8: o board de PRCs
+    Prc,
+    PrcRefresh,
     /// "+" / Alt+T: a lista de repos para a aba nova
     RepoMenu,
     /// abre uma aba de trabalho nesta pasta
@@ -191,6 +194,8 @@ pub fn commands() -> Vec<Item> {
         c("Banco: ligar ou desligar…", "Ctrl+Shift+D", Some(DbMenu)),
         c("Banco: ligar todos", "", Some(TunnelsOn)),
         c("Banco: desligar todos", "", Some(TunnelsOff)),
+        c("Ir para: PRCs", "Alt+8", Some(Prc)),
+        c("PRCs: atualizar", "r", Some(PrcRefresh)),
         c("Ajuda: Atalhos e decisões de UX", "?", Some(Help)),
         c("Terminal: Rodar tarefa…", "", Some(TaskMenu)),
         c("Editor: Problemas", "", Some(Problems)),

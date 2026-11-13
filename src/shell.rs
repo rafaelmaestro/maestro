@@ -19,6 +19,7 @@ use crate::{
     new_feature::{self, NewFeature},
     news_view::{self, NewsView},
     palette_cmd::{self, Cmd, CommandPalette},
+    prc_view::{self, PrcView},
     review::{self, Redo, Review},
     sidebar::{FsOp, Go, Sidebar, SidebarEvent},
     terminal::TerminalView,
@@ -99,6 +100,8 @@ pub struct Shell {
     /// o modo Bancos; nasce com o app para a contagem do título e da barra de status
     tunnels: Entity<TunnelsView>,
     in_db: bool,
+    prc: Entity<PrcView>,
+    in_prc: bool,
     /// o Resumo do dia na tela (não bloqueia nada)
     brief: bool,
     /// o modo Auditoria (dentro de Features, como no protótipo)
@@ -160,6 +163,15 @@ const DB_HINTS: &[(&str, &str, bool)] = &[
     ("Enter", "liga/desliga", true),
     ("/", "filtrar", true),
     ("Ctrl+Shift+D", "ligar de qualquer tela", true),
+];
+
+const PRC_HINTS: &[(&str, &str, bool)] = &[
+    ("Alt+8", "PRCs", true),
+    ("h l", "coluna", true),
+    ("j k", "card", true),
+    ("arraste", "outra coluna (muda no Jira)", true),
+    ("o", "abrir no Jira", true),
+    ("r", "atualizar", true),
 ];
 
 const NEWS_HINTS: &[(&str, &str, bool)] = &[
@@ -292,6 +304,19 @@ impl Shell {
             &tunnels,
             |this: &mut Self, _, e: &tunnels_view::Event, cx| match e {
                 tunnels_view::Event::Toast(t) => this.toast(t.clone(), cx),
+            },
+        )
+        .detach();
+        let prc = cx.new(|cx| PrcView::new(theme.clone(), cx));
+        cx.subscribe(
+            &prc,
+            |this: &mut Self, _, e: &prc_view::Event, cx| match e {
+                prc_view::Event::Toast(t) => this.toast(t.clone(), cx),
+                prc_view::Event::Moved { key, from, to } => this.toast_undo(
+                    format!("{key}: {from} → {to} no Jira"),
+                    Some(Redo::PrcMove(key.clone(), to.clone(), from.clone())),
+                    cx,
+                ),
             },
         )
         .detach();
@@ -459,6 +484,8 @@ impl Shell {
             in_news: false,
             tunnels,
             in_db: false,
+            prc,
+            in_prc: false,
             brief: false,
             mrs: None,
             in_mrs: false,
@@ -505,6 +532,7 @@ impl Shell {
                 "5" => Cmd::News,
                 "6" => Cmd::AttentionMenu,
                 "7" => Cmd::Vault(crate::palette_cmd::VaultGo::NewNote),
+                "8" => Cmd::Prc,
                 _ => return,
             };
             cx.stop_propagation();
@@ -594,6 +622,7 @@ impl Shell {
     fn leave_modes(&mut self) {
         self.in_news = false;
         self.in_db = false;
+        self.in_prc = false;
         self.in_vault = false;
         self.in_mrs = false;
         self.in_audit = false;
@@ -1643,6 +1672,7 @@ impl Shell {
                     this.in_vault = false;
                     this.in_news = false;
                     this.in_db = false;
+                    this.in_prc = false;
                     if let Some(s) = &this.sidebar {
                         s.read(cx).focus(p.clone());
                     }
@@ -2388,6 +2418,7 @@ impl Shell {
                 self.in_vault = false;
                 self.in_news = false;
                 self.in_db = false;
+                self.in_prc = false;
                 self.in_mrs = false;
                 self.in_audit = false;
                 if let Some(s) = &self.sidebar {
@@ -2531,6 +2562,7 @@ impl Shell {
                 self.in_vault = false;
                 self.in_news = false;
                 self.in_db = false;
+                self.in_prc = false;
                 self.in_mrs = false;
                 self.in_audit = false;
                 window.focus(&self.terminal.read(cx).focus_handle(), cx);
@@ -2559,6 +2591,7 @@ impl Shell {
                 self.in_vault = false;
                 self.in_news = false;
                 self.in_db = false;
+                self.in_prc = false;
                 self.in_mrs = false;
                 self.in_audit = false;
             }
@@ -2572,6 +2605,7 @@ impl Shell {
                 self.in_vault = false;
                 self.in_news = false;
                 self.in_db = false;
+                self.in_prc = false;
                 self.in_mrs = false;
                 let f = a.read(cx).focus_handle();
                 window.focus(&f, cx);
@@ -2586,6 +2620,7 @@ impl Shell {
                 self.in_vault = false;
                 self.in_news = false;
                 self.in_db = false;
+                self.in_prc = false;
                 self.in_audit = false;
                 if cmd == Cmd::MrReview {
                     m.update(cx, |m, cx| m.start_review(cx));
@@ -2611,6 +2646,7 @@ impl Shell {
                 self.in_vault = true;
                 self.in_news = false;
                 self.in_db = false;
+                self.in_prc = false;
                 self.in_mrs = false;
                 self.in_audit = false;
                 let f = v.read(cx).focus_target(cx);
@@ -2619,6 +2655,22 @@ impl Shell {
                     self.tour = Some((tour::VAULT, "vault", 0));
                 }
                 return cx.notify();
+            }
+            Cmd::Prc => {
+                self.in_prc = true;
+                self.in_db = false;
+                self.in_news = false;
+                self.in_vault = false;
+                self.in_mrs = false;
+                self.in_audit = false;
+                self.prc.update(cx, |p, cx| p.ensure(cx));
+                let f = self.prc.read(cx).focus_handle();
+                window.focus(&f, cx);
+                return cx.notify();
+            }
+            Cmd::PrcRefresh => {
+                self.prc.update(cx, |p, cx| p.refresh(cx));
+                return self.run(Cmd::Prc, window, cx);
             }
             Cmd::Db => {
                 self.in_db = true;
@@ -2671,6 +2723,7 @@ impl Shell {
                 self.brief = false;
                 self.in_news = true;
                 self.in_db = false;
+                self.in_prc = false;
                 self.in_vault = false;
                 self.in_mrs = false;
                 self.in_audit = false;
@@ -3046,7 +3099,12 @@ impl Shell {
                     .child(
                         mode(
                             "Features",
-                            !self.in_vault && !self.in_mrs && !self.in_news && !self.in_db,
+                            !self.in_vault
+                                && !self.in_mrs
+                                && !self.in_news
+                                && !self.in_db
+                                && !self.in_prc
+                                && !self.in_prc,
                             (blocked > 0).then(|| format!("{blocked} !")),
                         )
                         .id("m-feat")
@@ -3095,6 +3153,16 @@ impl Shell {
                             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .on_click(cx.listener(|this, _, w, cx| this.run(Cmd::Db, w, cx)))
                     })
+                    .child(
+                        mode("PRCs", self.in_prc, {
+                            let n = self.prc.read(cx).waiting();
+                            (n > 0).then(|| n.to_string())
+                        })
+                        .id("m-prc")
+                        .cursor_pointer()
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_click(cx.listener(|this, _, w, cx| this.run(Cmd::Prc, w, cx))),
+                    )
                     .child(
                         mode("Vault", self.in_vault, None)
                             .id("m-vault")
@@ -3321,6 +3389,7 @@ impl Shell {
             && !self.in_vault
             && !self.in_news
             && !self.in_db
+            && !self.in_prc
         {
             bar = bar.child(
                 side.id("run-task")
@@ -3472,7 +3541,9 @@ impl Shell {
     /// As dicas da tela atual (o `HINTS[S.mode]` do protótipo).
     fn screen_hints(&self, cx: &App) -> &'static [(&'static str, &'static str, bool)] {
         let mr_open = self.mrs.as_ref().is_some_and(|m| m.read(cx).in_mr());
-        if self.in_db {
+        if self.in_prc {
+            PRC_HINTS
+        } else if self.in_db {
             DB_HINTS
         } else if self.in_news {
             NEWS_HINTS
@@ -3532,6 +3603,7 @@ impl Shell {
                 ),
                 ("Alt+1…6", "Features, MRs, Bancos, Vault, News, Fila", true),
                 ("Alt+7", "nota nova no Vault", true),
+                ("Alt+8", "PRCs", true),
                 ("Ctrl+Shift+P", "comandos", true),
                 ("Ctrl+Shift+K", "comando por descrição", true),
             ]
@@ -4157,6 +4229,7 @@ impl Render for Shell {
                                     && !self.in_mrs
                                     && !self.in_news
                                     && !self.in_db
+                                    && !self.in_prc
                             })
                             .map(|s| {
                                 div()
@@ -4172,12 +4245,14 @@ impl Render for Shell {
                     })
                     .when_some(self.in_news.then(|| self.news.clone()), |d, n| d.child(n))
                     .when_some(self.in_db.then(|| self.tunnels.clone()), |d, n| d.child(n))
+                    .when_some(self.in_prc.then(|| self.prc.clone()), |d, n| d.child(n))
                     .when(
                         !self.in_vault
                             && !self.in_mrs
                             && !self.in_audit
                             && !self.in_news
-                            && !self.in_db,
+                            && !self.in_db
+                            && !self.in_prc,
                         |d| {
                             d.child(
                                 div()
@@ -4202,6 +4277,7 @@ impl Render for Shell {
                                     && !self.in_audit
                                     && !self.in_news
                                     && !self.in_db
+                                    && !self.in_prc
                             })
                             .map(|r| {
                                 let strip = self.repo_strip(cx);
@@ -4423,6 +4499,11 @@ impl Render for Shell {
                                             if let Some(m) = &this.mrs {
                                                 m.update(cx, |m, cx| m.undo(cx));
                                             }
+                                            Ok(())
+                                        }
+                                        Redo::PrcMove(key, now, back) => {
+                                            this.prc
+                                                .update(cx, |p, cx| p.move_to(key, now, back, cx));
                                             Ok(())
                                         }
                                         Redo::News(rule) => {

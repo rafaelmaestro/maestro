@@ -170,6 +170,193 @@ pub fn create(project: &str, kind: &str, title: &str) -> Result<String, String> 
     .map(|c| c.key)
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Column {
+    pub name: String,
+    pub statuses: Vec<String>,
+    /// todos os status são de conclusão: o board não carrega os cards dela
+    pub done: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Linked {
+    pub key: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrcCard {
+    pub key: String,
+    pub title: String,
+    pub status: String,
+    pub labels: Vec<String>,
+    pub acr: Option<Linked>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Board {
+    pub site: String,
+    pub cols: Vec<Column>,
+    pub cards: Vec<PrcCard>,
+}
+
+/// As colunas e os cards abertos do board. Os cards saem do `tool_result` do MCP, não da resposta do modelo:
+/// com dezenas de cards, redigitar arrisca inventar ou perder card.
+/// ponytail: até 100 cards (uma página do JQL); paginar se o board passar disso
+pub fn board(id: u64, acr_link: Option<&str>) -> Result<Board, String> {
+    let tools = [
+        "getAccessibleAtlassianResources",
+        "executeRead",
+        "searchJiraIssuesUsingJql",
+    ]
+    .map(|t| format!("mcp__claude_ai_Atlassian_MCP__{t}"))
+    .join(",");
+    let prompt = format!(
+        "{CLOUD}. Chame executeRead com name getJiraBoardConfig e inputs {{\"boardId\":{id}}}. Com o id do filtro \
+         dessa config, chame searchJiraIssuesUsingJql com jql 'filter = <id> AND statusCategory != Done ORDER BY \
+         updated DESC', maxResults 100 e fields [\"summary\",\"status\",\"labels\",\"issuelinks\"]. Não resuma; \
+         responda só OK."
+    );
+    let out = Command::new("claude")
+        .arg("-p")
+        .arg(prompt)
+        .args([
+            "--model",
+            "haiku",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+        ])
+        .arg(format!("--allowedTools={tools}"))
+        .current_dir(std::env::temp_dir())
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| format!("claude: {e}"))?;
+    parse_board(&String::from_utf8_lossy(&out.stdout), acr_link)
+}
+
+/// `acr_link`: o tipo de vínculo PRC↔ACR (da config local); sem ele, vale qualquer vínculo com outro projeto.
+pub fn parse_board(stream: &str, acr_link: Option<&str>) -> Result<Board, String> {
+    let mut names = std::collections::HashMap::new();
+    let (mut site, mut cfg, mut issues) = (None, None, None);
+    for line in stream.lines() {
+        let Ok(v) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        for c in v["message"]["content"].as_array().into_iter().flatten() {
+            match c["type"].as_str() {
+                Some("tool_use") => {
+                    names.insert(
+                        c["id"].as_str().unwrap_or_default().to_string(),
+                        c["name"].as_str().unwrap_or_default().to_string(),
+                    );
+                }
+                Some("tool_result") => {
+                    let name = names
+                        .get(c["tool_use_id"].as_str().unwrap_or_default())
+                        .cloned()
+                        .unwrap_or_default();
+                    let text = match &c["content"] {
+                        Value::String(s) => s.clone(),
+                        Value::Array(xs) => xs.iter().filter_map(|x| x["text"].as_str()).collect(),
+                        _ => String::new(),
+                    };
+                    if c["is_error"].as_bool() == Some(true) {
+                        return Err(text);
+                    }
+                    let Ok(body) = serde_json::from_str::<Value>(&text) else {
+                        continue;
+                    };
+                    if name.ends_with("getAccessibleAtlassianResources") {
+                        site = body["data"]["resources"][0]["url"]
+                            .as_str()
+                            .map(String::from);
+                    } else if name.ends_with("executeRead") {
+                        cfg = Some(body["data"]["columnConfig"]["columns"].clone());
+                    } else if name.ends_with("searchJiraIssuesUsingJql") {
+                        issues = Some(body["issues"]["nodes"].clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        if v["type"] == "result" && v["is_error"].as_bool() == Some(true) {
+            return Err(v["result"]
+                .as_str()
+                .unwrap_or("o claude falhou")
+                .to_string());
+        }
+    }
+    let cols = cfg.ok_or("o Jira não devolveu a config do board")?;
+    let issues = issues.ok_or("o Jira não devolveu os cards do board")?;
+    let cols = cols
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| {
+            let sts = c["statuses"].as_array()?;
+            (!sts.is_empty()).then(|| Column {
+                name: c["name"].as_str().unwrap_or_default().to_string(),
+                statuses: sts
+                    .iter()
+                    .filter_map(|s| s["name"].as_str().map(String::from))
+                    .collect(),
+                done: sts.iter().all(|s| s["category"] == "done"),
+            })
+        })
+        .collect();
+    let cards = issues
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|i| {
+            let key = i["key"].as_str().unwrap_or_default().to_string();
+            let f = &i["fields"];
+            let proj = key.split('-').next().unwrap_or_default();
+            let acr = f["issuelinks"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find_map(|l| {
+                    let o = if l["outwardIssue"].is_object() {
+                        &l["outwardIssue"]
+                    } else {
+                        &l["inwardIssue"]
+                    };
+                    let k = o["key"].as_str()?;
+                    let ok = match acr_link {
+                        Some(t) => l["type"]["name"] == t,
+                        None => k.split('-').next() != Some(proj),
+                    };
+                    ok.then(|| Linked {
+                        key: k.to_string(),
+                        status: o["fields"]["status"]["name"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_string(),
+                    })
+                });
+            PrcCard {
+                key,
+                title: f["summary"].as_str().unwrap_or_default().trim().to_string(),
+                status: f["status"]["name"].as_str().unwrap_or_default().to_string(),
+                labels: f["labels"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|l| l.as_str().map(String::from))
+                    .collect(),
+                acr,
+            }
+        })
+        .collect();
+    Ok(Board {
+        site: site.unwrap_or_default(),
+        cols,
+        cards,
+    })
+}
+
 fn parse<T: DeserializeOwned>(result: &str) -> Result<T, String> {
     let (a, b) = (result.find('{'), result.rfind('}'));
     let json = match (a, b) {
@@ -208,6 +395,48 @@ mod tests {
             parse::<Issue>("{\"error\":\"Issue \\\"PRD-1\\\" not found\"}").unwrap_err(),
             "Issue \"PRD-1\" not found"
         );
+    }
+
+    #[test]
+    fn board_sai_do_tool_result() {
+        let fx = include_str!("fixtures/prc-board.jsonl");
+        let b = parse_board(fx, None).unwrap();
+        assert_eq!(b.site, "https://x.atlassian.net");
+        let cols: Vec<_> = b
+            .cols
+            .iter()
+            .map(|c| (c.name.as_str(), c.statuses.len(), c.done))
+            .collect();
+        assert_eq!(
+            cols,
+            [
+                ("triagem", 1, false),
+                ("em andamento", 1, false),
+                ("com dev", 2, false),
+                ("resolvido", 1, true)
+            ]
+        );
+        let keys: Vec<_> = b.cards.iter().map(|c| c.key.as_str()).collect();
+        assert_eq!(keys, ["PRC-1", "PRC-2", "PRC-3"]);
+        assert_eq!(b.cards[0].labels, ["falha_envio_email", "escalado"]);
+        assert_eq!(b.cards[0].acr, None);
+        assert_eq!(
+            b.cards[1].acr,
+            Some(Linked {
+                key: "ACR-9".into(),
+                status: "Backlog".into()
+            })
+        );
+        let typed = parse_board(fx, Some("Problem/Incident")).unwrap();
+        assert_eq!(
+            typed.cards[1].acr.as_ref().map(|a| a.key.as_str()),
+            Some("ACR-9")
+        );
+        assert_eq!(parse_board(fx, Some("Blocks")).unwrap().cards[1].acr, None);
+        let err = "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"a\",\"name\":\"executeRead\"}]}}\n\
+                   {\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"a\",\"is_error\":true,\"content\":\"401 sem acesso\"}]}}";
+        assert_eq!(parse_board(err, None).unwrap_err(), "401 sem acesso");
+        assert!(parse_board("", None).is_err());
     }
 
     #[test]

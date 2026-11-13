@@ -119,6 +119,14 @@ O dia a dia é o Claude Code no terminal. O editor serve para **revisar depois**
 - Cada item diz **por que** apareceu e **o que pode afetar**.
 - **Resumo do dia** na primeira abertura de cada dia.
 
+### PRCs
+
+<img src="docs/media/prcs.png" alt="Board de PRCs com as colunas do Jira" width="100%">
+
+- O board de chamados de cliente do Jira em colunas, lido ao entrar na tela e pelo **Atualizar**, sem polling.
+- **Arrastar** um card para outra coluna muda o status no Jira, com **Desfazer**; soltar na coluna de conclusão fecha o chamado.
+- O card mostra a ACR (análise de causa raiz) ligada e marca **◆ receita** quando a base de conhecimento do vault (`prcs/<label>.md`) já tem uma nota para aquele tipo de chamado.
+
 ## Instalação
 
 **Pré-requisitos**
@@ -160,6 +168,14 @@ Por repositório, um `.maestro.toml` opcional define o setup da worktree:
 setup = "npm ci"
 ```
 
+Para a tela PRCs, `~/.config/maestro/prc.json` (fora do repo) diz qual board ler:
+
+```json
+{ "board": 123, "repos": "~/repos", "acr_link": "Problem/Incident" }
+```
+
+`acr_link` é o tipo de vínculo que liga o chamado à ACR no Jira; sem ele, vale qualquer vínculo com outro projeto.
+
 Variáveis de ambiente:
 
 | Variável | Para que serve |
@@ -168,6 +184,7 @@ Variáveis de ambiente:
 | `MAESTRO_MR_GROUP` | grupo do GitLab cuja aba aparece na inbox de MRs |
 | `MAESTRO_VAULT` | pasta do vault (padrão `~/vault`) |
 | `MAESTRO_HERDR_SESSION` | sessão do herdr usada pelo terminal |
+| `MAESTRO_PRC` | caminho do `prc.json` |
 | `MAESTRO_ASK_MODEL` | modelo do "Perguntar ao Claude" |
 | `MAESTRO_STATE` | arquivo de estado (tutoriais, Resumo do dia) |
 | `MAESTRO_FEATURES`, `MAESTRO_SEEN`, `MAESTRO_MR_NOTIFY`, `MAESTRO_MR_WATCH` | inventário das features, shas revisados, estado das notificações e do vigia de MRs |
@@ -182,6 +199,7 @@ As variáveis de caminho servem principalmente para rodar uma instância de test
 | `Ctrl+Shift+P` | paleta de comandos |
 | `Ctrl+Shift+O` / `Ctrl+Shift+F` | abrir arquivo / árvore do projeto |
 | `Alt+1…5` | Features, MRs, Vault, Auditoria, News |
+| `Alt+8` | PRCs |
 | `Alt+N` | nova feature |
 | `Ctrl+Shift+1…9` | ir para a feature |
 | `Ctrl+Shift+Espaço` | próximo item da fila de atenção |
