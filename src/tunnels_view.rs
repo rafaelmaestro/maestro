@@ -1,6 +1,10 @@
 //! O modo Bancos (`renderDb`/`renderDbLeft` do protótipo): os túneis do zsh, globais ao PC.
 
-use std::{collections::HashMap, time::Duration, time::Instant};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+    time::Instant,
+};
 
 use gpui_kit::{prelude::FluentBuilder, *};
 
@@ -29,6 +33,8 @@ pub struct TunnelsView {
     tunnels: Vec<Tunnel>,
     states: Vec<State>,
     since: HashMap<String, Instant>,
+    /// subiram pelo "Ligar todos": o resumo já avisou, o "de pé" de cada um não
+    quiet: HashSet<String>,
     procs: Procs,
     loaded: bool,
     env: &'static str,
@@ -65,6 +71,7 @@ impl TunnelsView {
                 this.loaded = true;
                 cx.notify();
             });
+            let mut first = true;
             loop {
                 let Ok((ports, procs)) = this.read_with(cx, |this, _| {
                     (
@@ -83,8 +90,15 @@ impl TunnelsView {
                             .collect::<Vec<_>>()
                     })
                     .await;
+                let boot = std::mem::take(&mut first)
+                    && autostart(std::env::var("MAESTRO_HERDR_SESSION").ok().as_deref());
                 if this
-                    .update(cx, |this, cx| this.apply(&procs, &up, cx))
+                    .update(cx, |this, cx| {
+                        this.apply(&procs, &up, cx);
+                        if boot && !to_start(&this.states).is_empty() {
+                            this.start_all(cx);
+                        }
+                    })
                     .is_err()
                 {
                     break;
@@ -96,6 +110,7 @@ impl TunnelsView {
             tunnels: Vec::new(),
             states: Vec::new(),
             since: HashMap::new(),
+            quiet: HashSet::new(),
             procs: Procs::default(),
             loaded: false,
             env: "all",
@@ -114,17 +129,19 @@ impl TunnelsView {
 
     fn apply(&mut self, procs: &Procs, up: &[bool], cx: &mut Context<Self>) {
         let mut changed = false;
+        let mut fell = Vec::new();
         for (i, t) in self.tunnels.iter().enumerate() {
             let new = procs.state(t, up.get(i).copied().unwrap_or(false));
             let old = &self.states[i];
             if *old == new {
                 continue;
             }
+            let quiet = *old == State::Starting && self.quiet.remove(&t.name);
             match (&old, &new) {
-                (State::Starting, State::Up) => {
+                (State::Starting, State::Up) if !quiet => {
                     cx.emit(Event::Toast(format!("{} de pé em :{}", t.name, t.port)))
                 }
-                (_, State::Down(why)) => cx.emit(Event::Toast(format!("{} caiu: {why}", t.name))),
+                (_, State::Down(why)) => fell.push((t.name.clone(), why.clone())),
                 _ => {}
             }
             if new == State::Up {
@@ -136,6 +153,9 @@ impl TunnelsView {
             }
             self.states[i] = new;
             changed = true;
+        }
+        if let Some(msg) = fell_toast(&fell) {
+            cx.emit(Event::Toast(msg));
         }
         if changed {
             cx.notify();
@@ -196,6 +216,40 @@ impl TunnelsView {
         for n in &names {
             self.toggle(n, cx);
         }
+    }
+
+    pub fn start_all(&mut self, cx: &mut Context<Self>) {
+        let xs = to_start(&self.states);
+        if self.tunnels.is_empty() {
+            return;
+        }
+        if xs.is_empty() {
+            cx.emit(Event::Toast("Todos os bancos já estão de pé".into()));
+            return;
+        }
+        let (mut ok, mut errs) = (0, Vec::new());
+        for i in xs.iter().copied() {
+            let t = self.tunnels[i].clone();
+            match self.procs.start(&t) {
+                Ok(()) => {
+                    self.states[i] = State::Starting;
+                    self.quiet.insert(t.name);
+                    ok += 1;
+                }
+                Err(e) => errs.push(format!("{}: {e}", t.name)),
+            }
+        }
+        let already = self.tunnels.len() - xs.len();
+        let mut msg = format!("Subindo {ok}");
+        if already > 0 {
+            msg.push_str(&format!(" · {already} já de pé"));
+        }
+        for e in errs {
+            msg.push('\n');
+            msg.push_str(&e);
+        }
+        cx.emit(Event::Toast(msg));
+        cx.notify();
     }
 
     fn shown(&self, cx: &App) -> Vec<usize> {
@@ -489,6 +543,12 @@ impl TunnelsView {
                     .text_color(t.muted)
                     .child(format!("{up} de pé · log em ~/.cache/sql-proxy/")),
             )
+            .when(!to_start(&self.states).is_empty(), |d| {
+                d.child(
+                    button(&t, "db-on", "Ligar todos", true)
+                        .on_click(cx.listener(|this, _, _, cx| this.start_all(cx))),
+                )
+            })
             .when(up > 0, |d| {
                 d.child(
                     button(&t, "db-off", "Desligar todos", false)
@@ -549,5 +609,66 @@ impl Render for TunnelsView {
             .child(self.left(cx))
             .child(theme::resize_handle("rz-db", LeftDrag, &t))
             .child(self.center(cx))
+    }
+}
+
+fn to_start(states: &[State]) -> Vec<usize> {
+    states
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| matches!(s, State::Off | State::Down(_)))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Credencial do gcloud vencida derruba todos de uma vez: um toast só, não um por túnel.
+fn fell_toast(fell: &[(String, String)]) -> Option<String> {
+    match fell {
+        [] => None,
+        [(name, why)] => Some(format!("{name} caiu: {why}")),
+        [(_, why), ..] => Some(format!("{} caíram: {why}", fell.len())),
+    }
+}
+
+/// A sessão de teste (`MAESTRO_HERDR_SESSION`) nunca sobe túnel sozinha: poderia abrir proxy de prd.
+fn autostart(session: Option<&str>) -> bool {
+    session.is_none()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{State, autostart, fell_toast, to_start};
+
+    #[test]
+    fn ligar_todos_pula_quem_esta_de_pe_ou_subindo() {
+        let s = [
+            State::Up,
+            State::Off,
+            State::Starting,
+            State::Down("caiu".into()),
+            State::Off,
+        ];
+        assert_eq!(to_start(&s), [1, 3, 4]);
+        assert!(to_start(&[State::Up, State::Starting]).is_empty());
+    }
+
+    #[test]
+    fn quedas_da_mesma_checagem_viram_um_toast() {
+        let why = "could not find default credentials".to_string();
+        assert_eq!(fell_toast(&[]), None);
+        assert_eq!(
+            fell_toast(&[("sql_a".into(), why.clone())]).unwrap(),
+            "sql_a caiu: could not find default credentials"
+        );
+        assert_eq!(
+            fell_toast(&[("sql_a".into(), why.clone()), ("sql_b".into(), why)]).unwrap(),
+            "2 caíram: could not find default credentials"
+        );
+    }
+
+    #[test]
+    fn sessao_de_teste_nao_sobe_sozinha() {
+        assert!(autostart(None));
+        assert!(!autostart(Some("maestro-test")));
     }
 }

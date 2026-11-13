@@ -936,7 +936,7 @@ function renderDbLeft(el){
 }
 function renderDb(el){
   const xs=dbVis(); S.dbsel=Math.min(S.dbsel||0,Math.max(xs.length-1,0)); const up=DBS.filter(d=>d.st==='up').length;
-  el.innerHTML=`<div class="ibar"><input id="dbq" placeholder="filtrar  ( / )" value="${esc(S.dbq||'')}" aria-label="Filtrar bancos"><span class="sp"></span><span class="muted" style="font-size:12px">${up} de pé · log em <span class="mono">~/.cache/sql-proxy/</span></span>${up?'<button class="btn danger" id="dbOff">Desligar todos</button>':''}</div>
+  el.innerHTML=`<div class="ibar"><input id="dbq" placeholder="filtrar  ( / )" value="${esc(S.dbq||'')}" aria-label="Filtrar bancos"><span class="sp"></span><span class="muted" style="font-size:12px">${up} de pé · log em <span class="mono">~/.cache/sql-proxy/</span></span>${DBS.some(d=>d.st==='off'||d.st==='down')?'<button class="btn pri" id="dbOn">Ligar todos</button>':''}${up?'<button class="btn danger" id="dbOff">Desligar todos</button>':''}</div>
     <div class="list">${xs.length?xs.map(({d,i},k)=>`<div class="row ${k===S.dbsel?'on':''}" data-dk="${k}" style="grid-template-columns:14px minmax(160px,220px) minmax(0,1fr) 60px 90px 200px">
       <span class="g ${d.st} ${d.st==='start'?'spin':''}" style="font:12px var(--mono);color:${d.st==='up'?'var(--ok)':d.st==='down'?'var(--bad)':d.st==='start'?'var(--yellow)':'var(--comment)'}">${DBG[d.st]}</span>
       <span class="proj">${d.n}${d.env==='prd'?' <span class="pill bad">prd</span>':''}</span>
@@ -948,9 +948,14 @@ function renderDb(el){
   el.querySelectorAll('[data-dcp]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); toast(`Copiado: localhost:${DBS[+b.dataset.dcp].port}`); });
   el.querySelectorAll('[data-dlog]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); toast(`Abriria ~/.cache/sql-proxy/${DBS[+b.dataset.dlog].n}.log`); });
   el.querySelectorAll('[data-dk]').forEach(r=>r.onclick=()=>{ S.dbsel=+r.dataset.dk; renderDb(el); });
+  const on=$('#dbOn'); if(on) on.onclick=startAllDb;
   const off=$('#dbOff'); if(off) off.onclick=()=>{ DBS.forEach(d=>{ if(d.st==='up') d.st='off'; }); toast('Bancos desligados'); render(); };
   $('#dbq').oninput=e=>{ S.dbq=e.target.value; S.dbsel=0; const p=e.target.selectionStart; renderDb(el); const i=$('#dbq'); i.focus(); i.setSelectionRange(p,p); };
 }
+function startAllDb(){ const xs=DBS.filter(d=>d.st==='off'||d.st==='down'), up=DBS.length-xs.length;
+  if(!xs.length){ toast('Todos os bancos já estão de pé'); return; }
+  xs.forEach(d=>{ d.st='start'; setTimeout(()=>{ if(d.fail) d.st='down'; else { d.st='up'; d.since='agora'; } render(); },900); });
+  toast(`Subindo ${xs.length}${up?` · ${up} já de pé`:''}`); render(); }
 function toggleDb(i){ const d=DBS[i];
   if(d.st==='up'){ d.st='off'; toast(`${d.n} desligado`); render(); return; }
   d.st='start'; render();
@@ -2609,7 +2614,7 @@ function palItems(){ const q=PAL.q.trim();
   if(PAL.mode==='db') return DBS.map((d,i)=>({t:`${d.st==='up'?'● ':'○ '}${d.n}${d.st==='up'?' · desligar':''}`,tag:/pro?d/.test(d.n)?'prd':'',p:1,g:':'+d.port,run:()=>toggleDb(i),s:q?fuzzy(q,d.n):0})).filter(x=>x.s>=0).sort((a,b)=>q?b.s-a.s:0);
   if(PAL.mode==='file') return Object.keys(F).map(p=>({t:p,g:'',run:()=>{ if(S.mode!=='feat'){ S.mode='feat'; render(); } openFile(p); },s:q?fuzzy(q,p):0})).filter(x=>x.s>=0).sort((a,b)=>b.s-a.s);
   const dbs=DBS.map((d,i)=>({t:`Banco: ${d.st==='up'?'desligar':'ligar'} ${d.n} :${d.port}`,g:'',run:()=>toggleDb(i),s:q?fuzzy(q,'banco '+d.n):-1})).filter(x=>x.s>=0)
-    .concat(DBS.some(d=>d.st==='up')?[{t:'Banco: desligar todos',g:'',run:()=>{ DBS.forEach(d=>{ if(d.st==='up') d.st='off'; }); toast('Bancos desligados'); render(); },s:q?fuzzy(q,'banco desligar todos'):-1}]:[]).filter(x=>x.s>=0);
+    .concat([{t:'Banco: ligar todos',g:'',run:startAllDb,s:q?fuzzy(q,'banco ligar todos'):-1}]).concat(DBS.some(d=>d.st==='up')?[{t:'Banco: desligar todos',g:'',run:()=>{ DBS.forEach(d=>{ if(d.st==='up') d.st='off'; }); toast('Bancos desligados'); render(); },s:q?fuzzy(q,'banco desligar todos'):-1}]:[]).filter(x=>x.s>=0);
   const feats=FEATS.map((f,i)=>({t:`Feature: ${f.branch}`,g:`Ctrl+Shift+${i+1}`,run:()=>selectFeat(f.id),s:q?fuzzy(q,'feature '+f.branch):-1})).filter(x=>x.s>=0);
   return CMDS.map(([t,k,run])=>({t,g:k,run,s:q?fuzzy(q,t):0})).filter(x=>x.s>=0).concat(feats,dbs).sort((a,b)=>b.s-a.s); }
 function openPal(mode,q0){
