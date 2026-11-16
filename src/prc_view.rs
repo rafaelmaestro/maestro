@@ -20,8 +20,18 @@ use crate::{
     vault,
 };
 
+/// A Nova feature da ACR: o diálogo de sempre, preenchido.
+#[derive(Clone)]
+pub struct FeatureReq {
+    pub repo: Option<PathBuf>,
+    pub jira: String,
+    pub branch: String,
+    pub prompt: String,
+}
+
 pub enum Event {
     Toast(String),
+    NewFeature(FeatureReq),
     /// o card mudou de status no Jira: o toast oferece desfazer
     Moved {
         key: String,
@@ -71,6 +81,7 @@ struct Session {
 pub struct Actions {
     pub exec: bool,
     pub acr: bool,
+    pub feature: bool,
 }
 
 pub fn actions(a: Option<&Analysis>, linked_acr: bool) -> Actions {
@@ -78,11 +89,13 @@ pub fn actions(a: Option<&Analysis>, linked_acr: bool) -> Actions {
         return Actions {
             exec: false,
             acr: false,
+            feature: linked_acr,
         };
     };
     Actions {
         exec: a.cont.as_ref().is_some_and(|c| a.done < c.len()),
         acr: a.acr.is_some() && !linked_acr,
+        feature: linked_acr,
     }
 }
 
@@ -454,6 +467,50 @@ impl PrcView {
         }
     }
 
+    /// Com a ACR ligada ao PRC: o diálogo de Nova feature no repo culpado (se existir na pasta de repos).
+    fn new_feature(&mut self, key: &str, cx: &mut Context<Self>) {
+        let Some(acr) = self.card(key).and_then(|c| c.acr) else {
+            return cx.emit(Event::Toast(format!(
+                "{key}: sem ACR ligada no Jira (Atualizar depois de criar)"
+            )));
+        };
+        let a = self.analysis(key).and_then(|a| a.acr.clone());
+        let repos = self
+            .cfg
+            .clone()
+            .ok()
+            .flatten()
+            .map(|c| prc::expand(&c.repos));
+        let repo = a
+            .as_ref()
+            .zip(repos)
+            .map(|(a, r)| r.join(&a.repo))
+            .filter(|p| p.is_dir());
+        let (causa, loc) = a.map(|a| (a.causa, a.loc)).unwrap_or_default();
+        let slug = crate::feature::slug(&causa);
+        let slug = slug
+            .get(..slug.len().min(28))
+            .unwrap_or(&slug)
+            .trim_end_matches('-');
+        cx.emit(Event::NewFeature(FeatureReq {
+            repo,
+            jira: acr.key.clone(),
+            branch: format!("fix/{}-{}", acr.key, if slug.is_empty() { "causa-raiz" } else { slug }),
+            prompt: if causa.is_empty() {
+                format!(
+                    "Corrigir a causa raiz descrita na {} ({key}).\nLeia a ACR no Jira antes de começar e não commite.",
+                    acr.key
+                )
+            } else {
+                format!(
+                    "Corrigir a causa raiz de {} ({key}): {causa}{}.\nLeia a ACR no Jira antes de começar e não commite.",
+                    acr.key,
+                    if loc.is_empty() { String::new() } else { format!(" em {loc}") }
+                )
+            },
+        }));
+    }
+
     /// Fecha a aba e apaga o resultado: o card volta para a coluna do Jira.
     fn end(&mut self, key: &str, cx: &mut Context<Self>) {
         if let (Some(h), Some(s)) = (self.herdr.clone(), self.sessions.remove(key)) {
@@ -583,6 +640,11 @@ impl PrcView {
             "c" => {
                 if let Some(c) = cur {
                     self.create_acr(&c, cx);
+                }
+            }
+            "n" => {
+                if let Some(c) = cur {
+                    self.new_feature(&c, cx);
                 }
             }
             "enter" => self.open = cur,
@@ -902,6 +964,13 @@ impl PrcView {
                     button(&t, "pc-an", "Analisar  a", true)
                         .on_click(cx.listener(move |this, _, _, cx| this.analyze(&k2, cx))),
                 );
+                if acts.feature {
+                    let k2 = k.clone();
+                    row = row
+                        .child(button(&t, "pc-nf0", "Nova feature  n", false).on_click(
+                            cx.listener(move |this, _, _, cx| this.new_feature(&k2, cx)),
+                        ));
+                }
             } else {
                 if acts.exec {
                     let k2 = k.clone();
@@ -921,6 +990,13 @@ impl PrcView {
                         button(&t, "pc-acr", "Criar ACR  c", false)
                             .on_click(cx.listener(move |this, _, _, cx| this.create_acr(&k2, cx))),
                     );
+                }
+                if acts.feature {
+                    let k2 = k.clone();
+                    row = row
+                        .child(button(&t, "pc-nf", "Nova feature  n", false).on_click(
+                            cx.listener(move |this, _, _, cx| this.new_feature(&k2, cx)),
+                        ));
                 }
                 let k2 = k.clone();
                 row = row.child(button(&t, "pc-det", "Detalhe e sessão", false).on_click(
@@ -1245,6 +1321,13 @@ impl PrcView {
                         .on_click(cx.listener(move |this, _, _, cx| this.create_acr(&k2, cx))),
                 );
             }
+            if acts.feature {
+                let k2 = k.clone();
+                foot = foot.child(
+                    button(&t, "pd-nf", "Nova feature", false)
+                        .on_click(cx.listener(move |this, _, _, cx| this.new_feature(&k2, cx))),
+                );
+            }
             let k2 = k.clone();
             foot = foot.child(
                 button(&t, "pd-full", "Abrir em tela cheia", false).on_click(cx.listener(
@@ -1546,32 +1629,24 @@ mod tests {
 
     #[test]
     fn acoes_conforme_o_resultado() {
-        let none = Actions {
-            exec: false,
-            acr: false,
-        };
-        assert_eq!(actions(None, false), none);
+        let a = |exec, acr, feature| Actions { exec, acr, feature };
+        assert_eq!(actions(None, false), a(false, false, false));
+        assert_eq!(actions(None, true), a(false, false, true));
         assert_eq!(
             actions(Some(&an(Some(2), 0, true)), false),
-            Actions {
-                exec: true,
-                acr: true
-            }
+            a(true, true, false)
         );
         assert_eq!(
             actions(Some(&an(None, 0, true)), false),
-            Actions {
-                exec: false,
-                acr: true
-            }
+            a(false, true, false)
         );
-        assert_eq!(actions(Some(&an(Some(2), 2, false)), false), none);
+        assert_eq!(
+            actions(Some(&an(Some(2), 2, false)), false),
+            a(false, false, false)
+        );
         assert_eq!(
             actions(Some(&an(Some(1), 0, true)), true),
-            Actions {
-                exec: true,
-                acr: false
-            }
+            a(true, false, true)
         );
     }
 

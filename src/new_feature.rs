@@ -211,6 +211,16 @@ impl NewFeature {
     }
 
     /// `retry`: a segunda tentativa, depois de o MCP do Atlassian falhar (ele às vezes ainda está conectando).
+    /// Vem preenchido de fora (a ACR de um PRC): key, branch e pedido; a busca no Jira segue igual.
+    pub fn prefill(&mut self, jira: &str, branch: &str, prompt: &str, cx: &mut Context<Self>) {
+        self.jira.update(cx, |f, cx| f.set(jira.to_string(), cx));
+        self.branch
+            .update(cx, |f, cx| f.set(branch.to_string(), cx));
+        self.prompt
+            .update(cx, |f, cx| f.set(prompt.to_string(), cx));
+        self.lookup_jira(false, cx);
+    }
+
     fn lookup_jira(&mut self, retry: bool, cx: &mut Context<Self>) {
         let raw = self.jira.read(cx).value.clone();
         if raw.trim().is_empty() {

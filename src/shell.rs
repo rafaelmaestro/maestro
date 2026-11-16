@@ -102,6 +102,8 @@ pub struct Shell {
     in_db: bool,
     prc: Entity<PrcView>,
     in_prc: bool,
+    /// a Nova feature pedida por um card de PRC: abre no próximo render, que tem a janela
+    prc_feature: Option<prc_view::FeatureReq>,
     /// o Resumo do dia na tela (não bloqueia nada)
     brief: bool,
     /// o modo Auditoria (dentro de Features, como no protótipo)
@@ -177,6 +179,7 @@ const PRC_HINTS: &[(&str, &str, bool)] = &[
     ("a", "analisar", true),
     ("e", "executar contingência", true),
     ("c", "criar ACR", true),
+    ("n", "Nova feature da ACR", true),
     ("Enter", "detalhe e sessão", true),
     ("o", "abrir no Jira", true),
     ("r", "atualizar", true),
@@ -321,6 +324,10 @@ impl Shell {
             &prc,
             |this: &mut Self, _, e: &prc_view::Event, cx| match e {
                 prc_view::Event::Toast(t) => this.toast(t.clone(), cx),
+                prc_view::Event::NewFeature(r) => {
+                    this.prc_feature = Some(r.clone());
+                    cx.notify();
+                }
                 prc_view::Event::Moved { key, from, to } => this.toast_undo(
                     format!("{key}: {from} → {to} no Jira"),
                     Some(Redo::PrcMove(key.clone(), to.clone(), from.clone())),
@@ -495,6 +502,7 @@ impl Shell {
             in_db: false,
             prc,
             in_prc: false,
+            prc_feature: None,
             brief: false,
             mrs: None,
             in_mrs: false,
@@ -696,6 +704,34 @@ impl Shell {
             self.palette = Some(p);
         }
         cx.stop_propagation();
+        cx.notify();
+    }
+
+    fn open_prc_feature(
+        &mut self,
+        r: prc_view::FeatureReq,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(sidebar) = &self.sidebar else { return };
+        let s = sidebar.read(cx);
+        let (Some(repo), herdr) = (r.repo.clone().or_else(|| s.top_repo()), s.herdr()) else {
+            return;
+        };
+        let theme = self.theme.clone();
+        let d = cx.new(|cx| NewFeature::new(herdr, repo, theme, window, cx));
+        d.update(cx, |d, cx| d.prefill(&r.jira, &r.branch, &r.prompt, cx));
+        cx.subscribe_in(&d, window, |this, _, e: &new_feature::Event, window, cx| {
+            let new_feature::Event::Done(warning) = e;
+            if let Some(w) = warning {
+                this.toast(w.clone(), cx);
+            }
+            this.dialog = None;
+            window.focus(&this.terminal.read(cx).focus_handle(), cx);
+            cx.notify();
+        })
+        .detach();
+        self.dialog = Some(d);
         cx.notify();
     }
 
@@ -3919,6 +3955,9 @@ fn resize_edges() -> impl Iterator<Item = Div> {
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_repos(window, cx);
+        if let Some(r) = self.prc_feature.take() {
+            self.open_prc_feature(r, window, cx);
+        }
         if let (Some(c), Some(s)) = (
             self.review
                 .as_ref()
