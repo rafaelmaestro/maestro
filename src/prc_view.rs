@@ -1473,7 +1473,9 @@ impl PrcView {
             .items_start()
             .gap(px(10.))
             .p(px(12.))
-            .overflow_x_scroll();
+            .overflow_x_scroll()
+            // sem isso o GPUI converte a roda vertical em rolagem horizontal: a coluna desce e o board anda
+            .restrict_scroll_to_axis();
         kb = kb.child(self.column(0, cx));
         if self.board.is_none() && self.loading {
             kb = kb.child(
