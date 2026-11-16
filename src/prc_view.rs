@@ -12,7 +12,7 @@ use gpui_kit::{prelude::FluentBuilder, *};
 use serde_json::json;
 
 use crate::{
-    form::{FieldEvent, TextField, button},
+    form::button,
     herdr::{Herdr, Status},
     jira::{self, Board, PrcCard},
     prc::{self, Analysis, Config},
@@ -32,6 +32,8 @@ pub struct FeatureReq {
 pub enum Event {
     Toast(String),
     NewFeature(FeatureReq),
+    /// leva para a aba `<KEY> · análise`
+    Session(String),
     /// o card mudou de status no Jira: o toast oferece desfazer
     Moved {
         key: String,
@@ -131,8 +133,6 @@ pub struct PrcView {
     herdr: Option<Arc<Herdr>>,
     sessions: HashMap<String, Session>,
     open: Option<String>,
-    mirror: String,
-    input: Entity<TextField>,
     left_w: f32,
     focus: FocusHandle,
     theme: Theme,
@@ -143,45 +143,20 @@ impl EventEmitter<Event> for PrcView {}
 
 impl PrcView {
     pub fn new(theme: Theme, herdr: Option<Arc<Herdr>>, cx: &mut Context<Self>) -> Self {
-        let input = cx
-            .new(|cx| TextField::new(theme.clone(), "", "escreva para o Claude", false, false, cx));
-        cx.subscribe(&input, |this, _, e: &FieldEvent, cx| {
-            if matches!(e, FieldEvent::Submit) {
-                let text = this.input.read(cx).value.trim().to_string();
-                if !text.is_empty() {
-                    this.input.update(cx, |f, cx| f.set(String::new(), cx));
-                    if let Some(k) = this.open.clone() {
-                        this.send_text(&k, &text, cx);
-                    }
-                }
-            }
-        })
-        .detach();
-        // ponytail: herdr a cada 1 s (socket local); o pane só é lido com o detalhe aberto
+        // ponytail: herdr a cada 1 s (socket local)
         let poll = cx.spawn(async move |this, cx| {
             loop {
-                let Ok((h, open)) = this.read_with(cx, |this, _| {
-                    (
-                        this.herdr.clone(),
-                        this.open
-                            .as_ref()
-                            .and_then(|k| this.sessions.get(k))
-                            .and_then(|s| s.pane.clone()),
-                    )
-                }) else {
+                let Ok(h) = this.read_with(cx, |this, _| this.herdr.clone()) else {
                     break;
                 };
                 if let Some(h) = h {
-                    let (sessions, mirror) = cx
+                    let sessions = cx
                         .background_executor()
-                        .spawn(async move { (scan(&h), open.map(|p| read_pane(&h, &p))) })
+                        .spawn(async move { scan(&h) })
                         .await;
                     if this
                         .update(cx, |this, cx| {
                             this.sessions = sessions;
-                            if let Some(m) = mirror {
-                                this.mirror = m;
-                            }
                             cx.notify();
                         })
                         .is_err()
@@ -204,8 +179,6 @@ impl PrcView {
             herdr,
             sessions: HashMap::new(),
             open: None,
-            mirror: String::new(),
-            input,
             left_w: 250.,
             focus: cx.focus_handle(),
             theme,
@@ -353,25 +326,36 @@ impl PrcView {
         self.sessions.get(key)?.result.as_ref()?.as_ref().ok()
     }
 
-    /// Abre a aba `<KEY> · análise` com o Claude isolado, ou foca a que já existe.
+    /// Leva para a aba da sessão; se ela foi fechada, reabre a conversa nela.
+    fn go(&mut self, key: &str, cx: &mut Context<Self>) {
+        if !self.sessions.contains_key(key) {
+            self.start(key, true, cx);
+        }
+        if let Some(s) = self.sessions.get(key) {
+            cx.emit(Event::Session(s.ws.clone()));
+        }
+    }
+
     fn analyze(&mut self, key: &str, cx: &mut Context<Self>) {
+        self.start(key, false, cx);
+    }
+
+    /// Abre a aba `<KEY> · análise` com o Claude isolado, ou foca a que já existe.
+    fn start(&mut self, key: &str, resume: bool, cx: &mut Context<Self>) {
         let Some(h) = self.herdr.clone() else {
             return cx.emit(Event::Toast(
                 "herdr desligado: a análise roda numa aba dele".into(),
             ));
         };
         if let Some(s) = self.sessions.get(key) {
-            let _ = h.focus_workspace(&s.ws);
-            return cx.emit(Event::Toast(format!(
-                "{key} já está em análise: aba focada"
-            )));
+            return cx.emit(Event::Session(s.ws.clone()));
         }
         let (Some(card), Ok(Some(cfg))) = (self.card(key), self.cfg.clone()) else {
             return;
         };
         let (session, repos, vault) =
             (prc::session_dir(key), prc::expand(&cfg.repos), vault::dir());
-        let cmd = match prc::prepare(&card, &session, &repos, &vault) {
+        let cmd = match prc::prepare(&card, &session, &repos, &vault, resume) {
             Ok(c) => c,
             Err(e) => return cx.emit(Event::Toast(format!("{key}: {e}"))),
         };
@@ -404,9 +388,11 @@ impl PrcView {
                 );
                 self.col = 0;
                 self.select(key);
-                cx.emit(Event::Toast(format!(
-                    "Abrindo {key} · análise numa aba do herdr: o Claude só lê até o resultado"
-                )));
+                if !resume {
+                    cx.emit(Event::Toast(format!(
+                        "Abrindo {key} · análise numa aba: o Claude só lê até o resultado"
+                    )));
+                }
             }
             (Err(e), _) => cx.emit(Event::Toast(format!("herdr: {e}"))),
             _ => cx.emit(Event::Toast("herdr: a aba abriu sem pane".into())),
@@ -425,17 +411,6 @@ impl PrcView {
             "pane.send_text",
             json!({ "pane_id": p, "text": format!("{text}\r") }),
         );
-        cx.notify();
-    }
-
-    fn send_keys(&mut self, key: &str, keys: &[&str], cx: &mut Context<Self>) {
-        let (Some(h), Some(p)) = (
-            self.herdr.clone(),
-            self.sessions.get(key).and_then(|s| s.pane.clone()),
-        ) else {
-            return;
-        };
-        let _ = h.call("pane.send_keys", json!({ "pane_id": p, "keys": keys }));
         cx.notify();
     }
 
@@ -999,12 +974,10 @@ impl PrcView {
                         ));
                 }
                 let k2 = k.clone();
-                row = row.child(button(&t, "pc-det", "Detalhe e sessão", false).on_click(
-                    cx.listener(move |this, _, _, cx| {
-                        this.open = Some(k2.clone());
-                        cx.notify();
-                    }),
-                ));
+                row = row.child(
+                    button(&t, "pc-det", "Ir para a sessão", false)
+                        .on_click(cx.listener(move |this, _, _, cx| this.go(&k2, cx))),
+                );
                 let k2 = k.clone();
                 row = row.child(
                     button(&t, "pc-end", "Encerrar", false)
@@ -1246,51 +1219,6 @@ impl PrcView {
                 );
             }
         }
-        if s.is_some() {
-            let k1 = key.to_string();
-            let k2 = key.to_string();
-            body = body.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(6.))
-                    .child(head("SESSÃO DO CLAUDE", t.muted))
-                    .child(
-                        div()
-                            .id("prc-mirror")
-                            .max_h(px(320.))
-                            .overflow_y_scroll()
-                            .p(px(8.))
-                            .bg(t.win)
-                            .border_1()
-                            .border_color(t.line)
-                            .rounded(px(6.))
-                            .font_family(t.mono.clone())
-                            .text_size(px(12.))
-                            .child(if self.mirror.is_empty() {
-                                "…".to_string()
-                            } else {
-                                self.mirror.clone()
-                            }),
-                    )
-                    .when(blocked, |d| {
-                        d.child(
-                            div()
-                                .flex()
-                                .gap(px(6.))
-                                .child(button(&t, "pd-yes", "1. Yes", true).on_click(cx.listener(
-                                    move |this, _, _, cx| this.send_keys(&k1, &["1"], cx),
-                                )))
-                                .child(button(&t, "pd-no", "2. No (esc)", false).on_click(
-                                    cx.listener(move |this, _, _, cx| {
-                                        this.send_keys(&k2, &["esc"], cx)
-                                    }),
-                                )),
-                        )
-                    })
-                    .child(self.input.clone()),
-            );
-        }
         let k = key.to_string();
         let mut foot = div()
             .flex()
@@ -1330,14 +1258,8 @@ impl PrcView {
             }
             let k2 = k.clone();
             foot = foot.child(
-                button(&t, "pd-full", "Abrir em tela cheia", false).on_click(cx.listener(
-                    move |this, _, _, cx| {
-                        if let (Some(h), Some(s)) = (this.herdr.clone(), this.sessions.get(&k2)) {
-                            let _ = h.focus_workspace(&s.ws);
-                        }
-                        cx.notify();
-                    },
-                )),
+                button(&t, "pd-full", "Ir para a sessão", false)
+                    .on_click(cx.listener(move |this, _, _, cx| this.go(&k2, cx))),
             );
             let k2 = k.clone();
             foot = foot.child(
@@ -1556,21 +1478,6 @@ fn root_pane(h: &Herdr, ws: &str) -> Option<String> {
         .iter()
         .find(|p| p["workspace_id"] == ws)
         .and_then(|p| p["pane_id"].as_str().map(String::from))
-}
-
-fn read_pane(h: &Herdr, pane: &str) -> String {
-    h.call(
-        "pane.read",
-        json!({ "pane_id": pane, "source": "recent", "lines": 25 }),
-    )
-    .ok()
-    .and_then(|v| {
-        v["text"]
-            .as_str()
-            .or_else(|| v["read"]["text"].as_str())
-            .map(String::from)
-    })
-    .unwrap_or_default()
 }
 
 fn hhmm() -> String {

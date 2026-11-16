@@ -382,6 +382,52 @@ pub fn context(card: &PrcCard, session: &Path, repos: &Path, vault: &Path) -> St
 
 /// O comando digitado no pane da sessão (cwd = pasta da sessão).
 pub fn command(card: &PrcCard, session: &Path, repos: &Path, vault: &Path) -> String {
+    let ask = crate::feature::sh_quote(&format!("Analise o {}: {}", card.key, card.title));
+    launch(session, repos, vault, &ask)
+}
+
+/// Reabre a conversa da sessão (`--continue`), ou começa de novo se o Claude não chegou a gravar nada.
+pub fn reopen(card: &PrcCard, session: &Path, repos: &Path, vault: &Path) -> String {
+    if has_conversation(session) {
+        launch(session, repos, vault, "--continue")
+    } else {
+        command(card, session, repos, vault)
+    }
+}
+
+fn has_conversation(session: &Path) -> bool {
+    let dir: String = session
+        .to_string_lossy()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    std::fs::read_dir(home().join(".claude/projects").join(dir)).is_ok_and(|mut d| {
+        d.any(|e| e.is_ok_and(|e| e.path().extension().is_some_and(|x| x == "jsonl")))
+    })
+}
+
+/// Marca a pasta da sessão como confiável: sem isso o Claude abre perguntando, e o Enter do comando cai no "No, exit".
+pub fn trusted(claude_json: &str, session: &Path) -> Option<String> {
+    let mut v: serde_json::Value = serde_json::from_str(claude_json).ok()?;
+    let k = session.to_string_lossy().to_string();
+    if v["projects"][&k]["hasTrustDialogAccepted"] == true {
+        return None;
+    }
+    if !v["projects"].is_object() {
+        v["projects"] = serde_json::json!({});
+    }
+    if !v["projects"][&k].is_object() {
+        v["projects"][&k] = serde_json::json!({});
+    }
+    v["projects"][&k]["hasTrustDialogAccepted"] = true.into();
+    serde_json::to_string_pretty(&v).ok()
+}
+
+fn home() -> PathBuf {
+    PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+}
+
+fn launch(session: &Path, repos: &Path, vault: &Path, tail: &str) -> String {
     let q = |p: &Path| crate::feature::sh_quote(&p.to_string_lossy());
     format!(
         "claude --permission-mode default --setting-sources local --settings {} --mcp-config {} --add-dir {} --add-dir {} --append-system-prompt \"$(cat {})\" {}",
@@ -390,33 +436,58 @@ pub fn command(card: &PrcCard, session: &Path, repos: &Path, vault: &Path) -> St
         q(repos),
         q(vault),
         q(&session.join("ctx.md")),
-        crate::feature::sh_quote(&format!("Analise o {}: {}", card.key, card.title)),
+        tail,
     )
 }
 
-/// Grava contexto, settings e mcp.json da sessão e devolve o comando.
+/// Grava contexto, settings e mcp.json da sessão e devolve o comando (`resume`: reabre a conversa).
 pub fn prepare(
     card: &PrcCard,
     session: &Path,
     repos: &Path,
     vault: &Path,
+    resume: bool,
 ) -> std::io::Result<String> {
     std::fs::create_dir_all(session)?;
-    let _ = std::fs::remove_file(session.join("result.json"));
+    if !resume {
+        let _ = std::fs::remove_file(session.join("result.json"));
+    }
     std::fs::write(session.join("ctx.md"), context(card, session, repos, vault))?;
     std::fs::write(session.join("settings.json"), settings_json(session, repos))?;
-    let claude = std::fs::read_to_string(
-        PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".claude.json"),
-    )
-    .unwrap_or_default();
+    let cj = home().join(".claude.json");
+    let claude = std::fs::read_to_string(&cj).unwrap_or_default();
     std::fs::write(session.join("mcp.json"), mcp_json(&claude))?;
-    Ok(command(card, session, repos, vault))
+    if let Some(t) = trusted(&claude, session) {
+        let tmp = cj.with_extension("json.maestro");
+        std::fs::write(&tmp, t)?;
+        std::fs::rename(&tmp, &cj)?;
+    }
+    Ok(if resume {
+        reopen(card, session, repos, vault)
+    } else {
+        command(card, session, repos, vault)
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::jira::parse_board;
+
+    #[test]
+    fn confia_na_pasta_da_sessao() {
+        let s = Path::new("/x/prcs/PRC-1");
+        let t = trusted(r#"{"projects":{"/a":{"k":1}},"mcpServers":{}}"#, s).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&t).unwrap();
+        assert_eq!(
+            v["projects"]["/x/prcs/PRC-1"]["hasTrustDialogAccepted"],
+            true
+        );
+        assert_eq!(v["projects"]["/a"]["k"], 1);
+        assert!(v["mcpServers"].is_object());
+        assert_eq!(trusted(&t, s), None);
+        assert_eq!(trusted("", s), None);
+    }
 
     #[test]
     fn colunas_e_destino() {
