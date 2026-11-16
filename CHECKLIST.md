@@ -441,6 +441,8 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
   - Leitura sem pedir aprovação (2026-11-13, a pedido do Rafael: "incomoda e muito"): hook `prc-guard` libera Bash só de leitura (`git -C … log`, `cd … && git log`, `rg 'a|b' | head`), SELECT e schema do dbx; medido que `; touch`, redirecionamento para fora da sessão e escrita em repo continuam pedindo ou negados.
   - Não exercitado: clique em Yes/No e em Encerrar (o usuário estava usando a máquina; teclas mandadas direto à janela, sem foco). Desvio: o detalhe não mostra a descrição do card (o board não busca descrição; a IA lê o card na análise).
 - [ ] Criar ACR e Nova feature a partir dela
+  - [x] Nova feature (`n` ou botão no card com ACR ligada): diálogo de sempre, no repo culpado quando ele existe na pasta de repos, com a ACR, `fix/<ACR>-<causa>` e o pedido preenchidos; verificado no app de teste (busca no Jira ✓, modo plano marcado, cancelado sem criar worktree)
+  - [ ] Primeira corrida real com o Rafael: análise, contingência e Criar ACR de ponta a ponta
 - Desvio combinado: coluna com dois status ("com dev / fornecedor") usa o primeiro ao soltar; trocar por escolha se fizer falta
 
 ## Backlog (não entra sem decisão)
