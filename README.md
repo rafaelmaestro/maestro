@@ -128,7 +128,7 @@ O dia a dia é o Claude Code no terminal. O editor serve para **revisar depois**
 - O card mostra a ACR (análise de causa raiz) ligada e marca **◆ receita** quando a base de conhecimento do vault (`prcs/<label>.md`) já tem uma nota para aquele tipo de chamado.
 - **Análise (IA)**: arrastar o card para a coluna (ou `a`) abre o Claude numa aba do herdr, que lê o chamado, a receita e os seus repos e devolve de uma vez o diagnóstico, a **contingência sem código** e a solução definitiva (**ACR** com repo e arquivo). O resultado aparece no card.
 - **Executar contingência** (`e`) roda os passos na mesma sessão, cada comando só com a sua aprovação: a sessão não carrega as suas regras `allow` e não edita os repos. **Criar ACR** (`c`) monta o card da ACR pela receita do vault.
-- Clicar no card (ou Enter) abre o detalhe com os passos e a sessão do Claude espelhada: dá para aprovar, recusar e escrever para ele sem sair da tela.
+- Clicar no card (ou Enter) abre o detalhe com o diagnóstico e os passos. "Ir para a sessão" leva à aba da análise, onde se aprova e conversa com o Claude; se a aba foi fechada, ela reabre a conversa.
 
 ## Instalação
 

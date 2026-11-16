@@ -1077,8 +1077,8 @@ function prcCard(c,on,ia){ const rc=prcRecipe(c);
     ${c.lb.length?`<div class="lb">${c.lb.map(l=>`<span class="pill">${l}</span>`).join('')}</div>`:''}
     ${ia?prcResult(c):''}
     ${on?`<div class="ka">${!ia?`<button class="btn pri" data-pan="${c.key}">Analisar <kbd>a</kbd></button>`
-      :c.an==='go'?`<button class="btn" data-pso="${c.key}">Detalhe e sessão</button>`
-      :`${c.an.cont&&c.exec!=='ok'?`<button class="btn pri" data-pex="${c.key}">${c.exec?'Ver execução':'Executar contingência'} <kbd>e</kbd></button>`:''}${c.an.acr&&!c.acrCard?`<button class="btn" data-pac="${c.key}">Criar ACR <kbd>c</kbd></button>`:''}${c.acrCard?`<button class="btn" data-pn="${c.key}">Nova feature <kbd>n</kbd></button>`:''}<button class="btn" data-pso="${c.key}">Detalhe e sessão</button><button class="btn danger" data-px="${c.key}">Encerrar</button>`}<button class="btn" data-po="${c.key}">Jira ↗</button></div>`:''}
+      :c.an==='go'?`<button class="btn" data-pso="${c.key}">Ir para a sessão</button>`
+      :`${c.an.cont&&c.exec!=='ok'?`<button class="btn pri" data-pex="${c.key}">${c.exec?'Ver execução':'Executar contingência'} <kbd>e</kbd></button>`:''}${c.an.acr&&!c.acrCard?`<button class="btn" data-pac="${c.key}">Criar ACR <kbd>c</kbd></button>`:''}${c.acrCard?`<button class="btn" data-pn="${c.key}">Nova feature <kbd>n</kbd></button>`:''}<button class="btn" data-pso="${c.key}">Ir para a sessão</button><button class="btn danger" data-px="${c.key}">Encerrar</button>`}<button class="btn" data-po="${c.key}">Jira ↗</button></div>`:''}
   </div>`; }
 function renderPrc(el){
   if(PRC.noCfg){ el.innerHTML=`<div class="empty"><h3>Nenhum board configurado</h3><p>Crie <span class="mono">~/.config/maestro/prc.json</span> com o id do board de PRCs no Jira e a pasta dos seus repos. Fica fora do repo do Maestro.</p><pre class="cfgx">{
@@ -1102,7 +1102,7 @@ function renderPrc(el){
       if(col.ia) prcAnalyze(key); else prcMove(key,col); }; });
   const on=(a,f)=>el.querySelectorAll(`[data-${a}]`).forEach(b=>b.onclick=()=>f(b.dataset[a.replace(/-./g,m=>m[1].toUpperCase())]));
   on('pan',prcAnalyze); on('pex',prcExec); on('pac',prcAcr); on('pn',prcFeature); on('px',prcEnd);
-  on('pso',prcOpen); on('po',k=>toast(`Abriria https://<site>/browse/${k}`));
+  on('pso',prcGo); on('po',k=>toast(`Abriria https://<site>/browse/${k}`));
   const cur=el.querySelector('.kcard.on'); if(cur) cur.scrollIntoView({block:'nearest',inline:'nearest'});
 }
 function prcLog(c){ const rc=prcRecipe(c), L=[{c:'u',t:`Analise o ${c.key}: ${c.t}`},{c:'dot',t:'⏺ getJiraIssue('+c.key+') · descrição e 4 comentários'},{c:'dot',t:`⏺ Read(~/vault/prcs/${rc[0]||''}${rc.length?'.md':''})`},{c:'out',t:'  ⎿  receita: '+(rc.length?'confirmar no provedor, depois tirar da supressão':'nenhuma nota bate; procurei em prcs/')}];
@@ -1134,26 +1134,21 @@ function prcDetail(){ const c=PRCS.find(x=>x.key===PRC.open); $('#prcDet')?.remo
       :`<div class="sec"><h5>Diagnóstico</h5><p>${esc(a.diag)}</p>${a.ev?`<div class="ev">${a.ev.map(x=>`<span>· ${esc(x)}</span>`).join('')}</div>`:''}</div>
       <div class="sec"><h5 class="sc">Contingência sem código${c.exec==='ok'||c.exec==='kb'?'<span class="sp"></span><span style="color:var(--ok)">aplicada</span>':''}</h5>${a.cont?`<ol class="steps2">${a.cont.map((x,i)=>{ const [k,g]=stepG(i); return `<li class="${k}"><span class="g ${k}">${g}</span><span>${esc(x)}${k==='w8'?' <span style="color:var(--orange)">· pede sua aprovação</span>':''}</span></li>`; }).join('')}</ol>`:'<p class="muted">Nenhuma: o cliente só destrava com mudança de código.</p>'}</div>
       <div class="sec"><h5 class="sa">ACR</h5>${a.acr?`<p>${esc(a.acr.causa)}</p><div class="ev"><span>· ${a.acr.repo} · ${a.acr.loc}</span></div>${c.acrCard?`<p class="mono" style="color:var(--accent)">${c.acrCard.key} <span class="muted" style="font-family:var(--sans)">· criada · ${c.acrCard.st}</span></p>`:''}`:`<p class="muted">Não precisa: ${esc(a.noAcr||'')}</p>`}</div>`}
-      ${c.an?`<div class="sec"><h5>Sessão do Claude<span class="sp"></span><span class="mono" style="text-transform:none;letter-spacing:0">aba "${c.key} · análise"</span></h5>
-        <div class="pterm term"><div class="tbody" id="pdLog">${prcLog(c).map(l=>`<div class="${l.c}">${esc(l.t)}</div>`).join('')}
-          ${pm?`<div class="perm" role="group" aria-label="Pedido de permissão"><span class="h">${pm.h}</span><span class="cmd">  ${esc(pm.cmd)}</span><span class="out">  ${esc(pm.why)}</span><span style="margin-top:4px">Do you want to proceed?</span><button class="on" data-pp="1">❯ 1. Yes</button><button data-pp="3">  2. No, and tell Claude what to do differently (esc)</button></div>`:''}</div>
-          <div class="tin"><span>&gt;</span><input id="pdIn" class="tin-in" autocomplete="off" aria-label="Mensagem para o Claude da análise de ${c.key}" placeholder="${pm?'responda 1 ou 2 acima, ou escreva para o Claude':'escreva para o Claude'}"></div></div></div>`:''}
+      ${c.an?`<div class="sec"><h5>Sessão do Claude<span class="sp"></span><span class="mono" style="text-transform:none;letter-spacing:0">aba "${c.key} · análise"</span></h5><p class="muted">${pm?'<span style="color:var(--orange)">● pedindo aprovação</span> · ':''}Responda e converse na própria aba. "Ir para a sessão" leva até ela e reabre a conversa se a aba foi fechada.</p></div>`:''}
     </div>
-    <div class="df">${!c.an?`<button class="btn pri" id="pdA">Analisar <kbd>a</kbd></button>`:a?`${a.cont&&!c.exec?`<button class="btn pri" id="pdE">Executar contingência <kbd>e</kbd></button>`:''}${a.acr&&!c.acrCard?`<button class="btn" id="pdC">Criar ACR <kbd>c</kbd></button>`:''}${c.acrCard?`<button class="btn" id="pdN">Nova feature <kbd>n</kbd></button>`:''}<button class="btn" id="pdS">Abrir em tela cheia</button><button class="btn danger" id="pdEnd">Encerrar</button>`:''}<span class="sp"></span><button class="btn" id="pdJ">Jira ↗</button></div>`;
+    <div class="df">${!c.an?`<button class="btn pri" id="pdA">Analisar <kbd>a</kbd></button>`:a?`${a.cont&&!c.exec?`<button class="btn pri" id="pdE">Executar contingência <kbd>e</kbd></button>`:''}${a.acr&&!c.acrCard?`<button class="btn" id="pdC">Criar ACR <kbd>c</kbd></button>`:''}${c.acrCard?`<button class="btn" id="pdN">Nova feature <kbd>n</kbd></button>`:''}<button class="btn" id="pdS">Ir para a sessão</button><button class="btn danger" id="pdEnd">Encerrar</button>`:''}<span class="sp"></span><button class="btn" id="pdJ">Jira ↗</button></div>`;
   $('#app').appendChild(d);
-  const lg=$('#pdLog'); if(lg) lg.scrollTop=lg.scrollHeight;
   const b=(id,f)=>{ const x=$('#'+id); if(x) x.onclick=f; };
   b('pdX',prcClose); b('pdA',()=>{ prcAnalyze(c.key); }); b('pdE',()=>{ prcExec(c.key); }); b('pdC',()=>{ prcAcr(c.key); }); b('pdN',()=>{ prcClose(); prcFeature(c.key); });
-  b('pdEnd',()=>{ prcClose(); prcEnd(c.key); }); b('pdS',()=>toast(`Focaria a aba "${c.key} · análise" no herdr, em tela cheia`)); b('pdJ',()=>toast(`Abriria https://<site>/browse/${c.key}`));
+  b('pdEnd',()=>{ prcClose(); prcEnd(c.key); }); b('pdS',()=>{ prcClose(); prcGo(c.key); }); b('pdJ',()=>toast(`Abriria https://<site>/browse/${c.key}`));
   d.querySelectorAll('[data-pp]').forEach(x=>x.onclick=()=>prcAnswer(c,x.dataset.pp==='1'));
-  const inp=$('#pdIn'); if(inp){ inp.onkeydown=e=>{ if(e.key==='1'&&pm&&!inp.value){ e.preventDefault(); prcAnswer(c,true); return; } if(e.key==='2'&&pm&&!inp.value){ e.preventDefault(); prcAnswer(c,false); return; }
-    if(e.key==='Enter'&&inp.value.trim()){ (c.chat=c.chat||[]).push({c:'u',t:inp.value.trim()},{c:'dotw',t:'⏺ Entendido. Sigo daqui considerando isso; nada roda sem a sua aprovação.'}); prcDetail(); $('#pdIn')?.focus(); } e.stopPropagation(); }; }
 }
+function prcGo(key){ toast(`Iria para a aba "${key} · análise" nas abas de trabalho; fechada, reabre a conversa (claude --continue)`); }
 function prcAnswer(c,yes){
   if(!yes){ (c.chat=c.chat||[]).push({c:'warn',t:'  ⎿  Recusado. O que prefiro fazer no lugar?'}); c.exec=c.exec==='w8'?'paused':c.exec; toast(`${c.key}: passo recusado; diga ao Claude o que fazer no lugar`); render(); prcDetail(); return; }
   if(c.exec==='w8'){ c.step++; if(c.step>=c.an.cont.length) c.exec='kb'; }
   else if(c.exec==='kb'){ c.exec='ok'; toast(`prcs/${prcRecipe(c)[0]||'novo'}.md atualizada · aparece na Atividade do Vault com desfazer`); }
-  render(); prcDetail(); $('#pdIn')?.focus(); }
+  render(); prcDetail(); }
 function prcMove(key,col){ const c=PRCS.find(x=>x.key===key); if(!c) return; const from=c.st, to=col.st[0];
   if(col.st.includes(from)){ if(c.an) toast(`${key} já está em ${from} no Jira; segue em análise`); return; }
   if(key==='PRC-107'&&col.done){ toast(`${key}: o fluxo do Jira não tem transição de ${from} para ${to}. O card fica onde estava.`); return; }
@@ -2751,7 +2746,7 @@ const HINTS={
   vault:[['Alt+7','nova nota'],['Ctrl+Shift+F','formatar com IA'],['clique','abrir nota'],['[[link]]','navegar'],['◎ Grafo','visão geral'],['Hoje','daily'],['?','atalhos']],
   audit:[['Nova auditoria…','incremental ou completa'],['espaço','marcar achado'],['?','atalhos']],
   mr:[['n p','próximo/anterior arquivo'],['V','visto e próximo'],['O','abrir no GitLab'],['R','atualizar'],['C','comentar linha'],['?','perguntar sobre o bloco'],['S','lado a lado/unificado'],['⇧R','revisar com Claude'],['Ctrl+⏎','publicar'],['Ctrl+Z','desfazer descarte'],['Esc','voltar']],
-  prc:[['Alt+8','PRCs'],['h l','coluna'],['j k','card'],['arraste','Análise (IA) ou outra coluna (muda no Jira)'],['a','analisar'],['e','executar contingência'],['c','criar ACR'],['n','Nova feature da ACR'],['clique · Enter','detalhe e sessão'],['o','abrir no Jira'],['r','atualizar']],
+  prc:[['Alt+8','PRCs'],['h l','coluna'],['j k','card'],['arraste','Análise (IA) ou outra coluna (muda no Jira)'],['a','analisar'],['e','executar contingência'],['c','criar ACR'],['n','Nova feature da ACR'],['clique · Enter','detalhe'],['o','abrir no Jira'],['r','atualizar']],
   db:[['Alt+3','Bancos'],['j k','navegar'],['Enter','liga/desliga'],['/','filtrar'],['Ctrl+Shift+D','ligar de qualquer tela']],
   news:[['Alt+5','News'],['título','abrir'],['Não relevante','oculta só aqui'],['?','atalhos']],
 };

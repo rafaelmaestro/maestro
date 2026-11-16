@@ -104,6 +104,7 @@ pub struct Shell {
     in_prc: bool,
     /// a Nova feature pedida por um card de PRC: abre no próximo render, que tem a janela
     prc_feature: Option<prc_view::FeatureReq>,
+    prc_go: Option<String>,
     /// o Resumo do dia na tela (não bloqueia nada)
     brief: bool,
     /// o modo Auditoria (dentro de Features, como no protótipo)
@@ -180,7 +181,7 @@ const PRC_HINTS: &[(&str, &str, bool)] = &[
     ("e", "executar contingência", true),
     ("c", "criar ACR", true),
     ("n", "Nova feature da ACR", true),
-    ("Enter", "detalhe e sessão", true),
+    ("Enter", "detalhe", true),
     ("o", "abrir no Jira", true),
     ("r", "atualizar", true),
 ];
@@ -324,6 +325,10 @@ impl Shell {
             &prc,
             |this: &mut Self, _, e: &prc_view::Event, cx| match e {
                 prc_view::Event::Toast(t) => this.toast(t.clone(), cx),
+                prc_view::Event::Session(ws) => {
+                    this.prc_go = Some(ws.clone());
+                    cx.notify();
+                }
                 prc_view::Event::NewFeature(r) => {
                     this.prc_feature = Some(r.clone());
                     cx.notify();
@@ -503,6 +508,7 @@ impl Shell {
             prc,
             in_prc: false,
             prc_feature: None,
+            prc_go: None,
             brief: false,
             mrs: None,
             in_mrs: false,
@@ -3955,6 +3961,13 @@ fn resize_edges() -> impl Iterator<Item = Div> {
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_repos(window, cx);
+        if let Some(ws) = self.prc_go.take() {
+            if let Some(s) = &self.sidebar {
+                s.read(cx).focus_workspace(ws);
+            }
+            self.leave_modes();
+            window.focus(&self.terminal.read(cx).focus_handle(), cx);
+        }
         if let Some(r) = self.prc_feature.take() {
             self.open_prc_feature(r, window, cx);
         }
