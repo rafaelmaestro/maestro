@@ -605,7 +605,22 @@ pub fn may_approve(f: &Facts) -> Result<(), String> {
 }
 
 pub const THREADS: &str = "esperando resolverem as threads abertas";
-const THREADS_NOTE: &str = "note: tem threads abertas neste MR. Do meu lado está ok; assim que forem resolvidas, eu aprovo.";
+const THREADS_NOTE: &str = "note: tem threads abertas ou revisão pendente neste MR. Do meu lado está ok; assim que resolverem, eu aprovo.";
+
+/// Duo ainda revisando, ou alguém pediu mudança: as threads dele chegam segundos depois da aprovação.
+fn reviewers_pending(reviewers: &Value, me: &str) -> bool {
+    reviewers.as_array().is_some_and(|v| {
+        v.iter().any(|r| {
+            let who = r["user"]["username"].as_str().unwrap_or_default();
+            who != me
+                && match r["state"].as_str().unwrap_or_default() {
+                    "requested_changes" => true,
+                    "unreviewed" | "review_started" => who == "GitLabDuo",
+                    _ => false,
+                }
+        })
+    })
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Action {
@@ -751,7 +766,18 @@ fn gate(
         prev_approved_sha,
         following,
         cfg,
-        threads_open: d.is_ok_and(|d| d["blocking_discussions_resolved"] == false),
+        threads_open: d.is_ok_and(|d| d["blocking_discussions_resolved"] == false)
+            || mrs::read(
+                &format!(
+                    "projects/{}/merge_requests/{}/reviewers",
+                    mrs::enc(&r.path),
+                    r.iid
+                ),
+                false,
+            )
+            .map_or(true, |v| {
+                reviewers_pending(&v, &mrs::me().unwrap_or_default())
+            }),
     })
 }
 
@@ -1305,6 +1331,13 @@ mod gate_tests {
             ..base()
         };
         assert_eq!(decide(&open), Action::Resolve);
+        let rev = |who: &str, st: &str| json!([{"user": {"username": who}, "state": st}]);
+        assert!(reviewers_pending(&rev("GitLabDuo", "unreviewed"), "eu"));
+        assert!(reviewers_pending(&rev("GitLabDuo", "review_started"), "eu"));
+        assert!(reviewers_pending(&rev("ana", "requested_changes"), "eu"));
+        assert!(!reviewers_pending(&rev("ana", "unreviewed"), "eu"));
+        assert!(!reviewers_pending(&rev("GitLabDuo", "reviewed"), "eu"));
+        assert!(!reviewers_pending(&rev("eu", "requested_changes"), "eu"));
         assert!(
             may_approve(&Facts {
                 author: "zé",
