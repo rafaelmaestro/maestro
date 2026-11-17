@@ -28,6 +28,7 @@ pub struct Row {
     pub notes: u64,
     pub updated: String,
     pub created: String,
+    pub description: String,
 }
 
 impl Row {
@@ -60,6 +61,7 @@ pub fn rows(list: &Value) -> Vec<Row> {
             web_url: m["web_url"].as_str().unwrap_or_default().into(),
             ci: None,
             notes: m["user_notes_count"].as_u64().unwrap_or_default(),
+            description: m["description"].as_str().unwrap_or_default().into(),
             updated: m["updated_at"].as_str().unwrap_or_default().into(),
             created: m["created_at"].as_str().unwrap_or_default().into(),
         })

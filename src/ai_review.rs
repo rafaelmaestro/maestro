@@ -461,6 +461,26 @@ pub struct Entry {
     pub wait_threads: bool,
     /// última sha revisada até o fim e o veredito dela: base da revisão incremental
     pub last: Option<(String, String)>,
+    /// hash da descrição revisada: se o check `desc` reprovou e ela mudou, revisa de novo
+    pub desc: u64,
+}
+
+fn hash(s: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    s.hash(&mut h);
+    h.finish()
+}
+
+/// A descrição segurou a aprovação e o autor já editou: vale revisar de novo, mesmo sem commit.
+fn desc_redo(e: &Entry, desc: &str) -> bool {
+    e.approved_sha.as_deref() != Some(e.sha.as_str())
+        && e.desc != hash(desc)
+        && e.report.as_ref().is_some_and(|r| {
+            r.checks
+                .iter()
+                .any(|c| c.dimension == "desc" && c.status == "fail")
+        })
 }
 
 impl Entry {
@@ -932,7 +952,7 @@ pub fn next(rows: &[Row], force: bool, only: Option<&str>) -> (Option<(Row, Valu
         if !forced
             && st.mrs.get(&key).is_some_and(|e| {
                 e.sha == r.sha
-                    && (e.status == "done"
+                    && (e.status == "done" && !desc_redo(e, &r.description)
                         || e.status == "ignored"
                         || e.why.starts_with(FAILED) && now.saturating_sub(e.at) < 3600)
             })
@@ -971,6 +991,9 @@ pub fn next(rows: &[Row], force: bool, only: Option<&str>) -> (Option<(Row, Valu
             }
         };
         set(&mut st, &key, &r.sha, status, why);
+        if status == "run" {
+            st.mrs.get_mut(&key).unwrap().desc = hash(&r.description);
+        }
     }
     st.save();
     (pick, notices)
@@ -1331,6 +1354,23 @@ mod gate_tests {
             ..base()
         };
         assert_eq!(decide(&open), Action::Resolve);
+        let mut e = Entry {
+            sha: "s1".into(),
+            desc: hash("antes"),
+            report: Some(Report {
+                checks: vec![Check {
+                    dimension: "desc".into(),
+                    status: "fail".into(),
+                    note: String::new(),
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(!desc_redo(&e, "antes"));
+        assert!(desc_redo(&e, "depois"));
+        e.approved_sha = Some("s1".into());
+        assert!(!desc_redo(&e, "depois"));
         let rev = |who: &str, st: &str| json!([{"user": {"username": who}, "state": st}]);
         assert!(reviewers_pending(&rev("GitLabDuo", "unreviewed"), "eu"));
         assert!(reviewers_pending(&rev("GitLabDuo", "review_started"), "eu"));

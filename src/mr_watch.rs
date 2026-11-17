@@ -700,6 +700,7 @@ mod tests {
             notes: 0,
             updated: String::new(),
             created: String::new(),
+            description: String::new(),
         };
         let ev = Ev::Threads {
             last: 5,

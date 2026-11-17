@@ -142,6 +142,7 @@ mod tests {
             notes,
             updated: format!("t{notes}"),
             created: String::new(),
+            description: String::new(),
         }
     }
 
