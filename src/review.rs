@@ -1821,10 +1821,11 @@ impl Render for Review {
         }
         self.list.remeasure_items(0..new);
         if let Some(target) = self.scroll_to.take()
-            && let Some(fi) = self
-                .files
-                .as_ref()
-                .and_then(|f| f.iter().position(|x| x.path == target))
+            && let Some(fi) = self.files.as_ref().and_then(|f| {
+                f.iter().position(|x| {
+                    x.path == target || (target.ends_with('/') && x.path.starts_with(&target))
+                })
+            })
             && let Some(ix) = self.rows.iter().position(|r| *r == (fi, None, None))
         {
             self.list.scroll_to(ListOffset {
