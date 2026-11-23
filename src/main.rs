@@ -33,6 +33,7 @@ mod new_feature;
 mod news;
 mod news_view;
 mod notes;
+mod open_in;
 mod palette;
 mod palette_cmd;
 mod perms;

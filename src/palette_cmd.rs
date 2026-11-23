@@ -34,6 +34,9 @@ pub enum Cmd {
     Feature(String),
     SendSelection,
     OpenFileMenu,
+    /// a worktree em foco, ou `arquivo:linha` nela, no editor (`None` = o preferido)
+    OpenIn(Option<(String, u32)>, Option<&'static str>),
+    OpenInMenu,
     OpenFile(String),
     Save,
     Affected,
@@ -170,7 +173,13 @@ pub fn commands() -> Vec<Item> {
         c("Trabalho: Próxima aba", "Alt+]", Some(NextWork(1))),
         c("Trabalho: Aba anterior", "Alt+[", Some(NextWork(-1))),
         c("Claude: Interromper", "Esc / Ctrl+C", Some(Interrupt)),
-        c("Arquivo: Abrir…", "Ctrl+Shift+O", Some(OpenFileMenu)),
+        c(
+            "Abrir no editor (worktree da feature)",
+            "Ctrl+Shift+O",
+            Some(OpenIn(None, None)),
+        ),
+        c("Abrir em: escolher editor", "", Some(OpenInMenu)),
+        c("Arquivo: Abrir…", "", Some(OpenFileMenu)),
         c("Arquivo: Salvar", "Ctrl+S", Some(Save)),
         c(
             "Layout: Mostrar/ocultar lateral",

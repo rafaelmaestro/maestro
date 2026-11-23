@@ -68,6 +68,8 @@ pub enum Event {
     OpenMr(crate::mrs::Row),
     /// o MR deste repo abriu (iid): a sub-task de Desenvolvimento dele vai para Pull Request
     MrOpenedIid(u64),
+    /// `arquivo:linha` no editor externo
+    OpenIn(String, u32),
 }
 
 struct Draft {
@@ -525,13 +527,8 @@ impl Review {
                         .py(px(4.))
                         .cursor_pointer()
                         .hover(|d| d.bg(t.raise))
-                        .on_click(cx.listener(move |this, _, w, cx| {
-                            if this.root.join(&path).is_file() {
-                                this.open_file(path.clone(), w, cx);
-                                if let Some(e) = this.editor().cloned() {
-                                    e.update(cx, |e, cx| e.goto(ln.saturating_sub(1), w, cx));
-                                }
-                            }
+                        .on_click(cx.listener(move |_, _, _, cx| {
+                            cx.emit(Event::OpenIn(path.clone(), ln.max(1)))
                         }))
                         .child(
                             div()
@@ -1379,7 +1376,7 @@ impl Review {
             .when(self.root.join(&f.path).is_file(), |x| {
                 let path = f.path.clone();
                 x.child(button(t, ("open", fi), "Abrir no editor", false).on_click(
-                    cx.listener(move |this, _, w, cx| this.open_file(path.clone(), w, cx)),
+                    cx.listener(move |_, _, _, cx| cx.emit(Event::OpenIn(path.clone(), 1))),
                 ))
             })
     }
@@ -1420,6 +1417,14 @@ impl Review {
                     .font_family(t.sans)
                     .when(fi == 0 && hi == 0, |x| {
                         x.relative().child(tour::anchor(&self.anchors, "hunkacts"))
+                    })
+                    .child({
+                        let (path, ln) = (f.path.clone(), new_start(&h.header));
+                        small(("hoe", fi * 1000 + hi), "↗ Editor").on_click(
+                            cx.listener(move |_, _, _, cx| {
+                                cx.emit(Event::OpenIn(path.clone(), ln))
+                            }),
+                        )
                     })
                     .child(
                         small(("ask", fi * 1000 + hi), "?")
@@ -1983,6 +1988,17 @@ impl Render for Review {
 
 /// O texto que a revisão de `root` manda ao Claude que mora em `owner`. Comando com barra só vale
 /// no começo da mensagem: vira `/mr no repositório <root>`; o resto ganha o repo na frente.
+/// `@@ -1,6 +12,8 @@` → 12
+fn new_start(header: &str) -> u32 {
+    header
+        .split('+')
+        .nth(1)
+        .and_then(|s| s.split([',', ' ']).next())
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(1)
+        .max(1)
+}
+
 pub fn for_repo(text: &str, root: &std::path::Path, owner: &std::path::Path) -> String {
     if root == owner {
         return text.into();
@@ -2006,6 +2022,13 @@ pub fn for_repo(text: &str, root: &std::path::Path, owner: &std::path::Path) -> 
 mod tests {
     use super::for_repo;
     use std::path::Path;
+
+    #[test]
+    fn linha_inicial_do_bloco() {
+        assert_eq!(super::new_start("@@ -1,6 +12,8 @@ fn x"), 12);
+        assert_eq!(super::new_start("@@ -0,0 +1 @@"), 1);
+        assert_eq!(super::new_start("@@ -3,2 +0,0 @@"), 1);
+    }
 
     #[test]
     fn texto_para_o_claude_de_outro_repo() {
