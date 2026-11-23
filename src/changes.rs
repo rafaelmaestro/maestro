@@ -294,11 +294,34 @@ pub fn changes(root: &Path) -> Option<Changes> {
     for f in &mut files {
         f.new = created.lines().any(|l| l == f.path);
     }
-    for path in git(root, &["ls-files", "--others", "--exclude-standard"])?.lines() {
-        let lines = std::fs::read_to_string(root.join(path)).map_or(0, |t| t.lines().count());
+    let lines = |p: &str| fs::read_to_string(root.join(p)).map_or(0, |t| t.lines().count() as u32);
+    for path in git(
+        root,
+        &[
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "--directory",
+            "--no-empty-directory",
+        ],
+    )?
+    .lines()
+    {
+        let added = if path.ends_with('/') {
+            git(
+                root,
+                &["ls-files", "--others", "--exclude-standard", "--", path],
+            )
+            .unwrap_or_default()
+            .lines()
+            .map(lines)
+            .sum()
+        } else {
+            lines(path)
+        };
         files.push(Change {
             path: path.into(),
-            added: lines as u32,
+            added,
             removed: 0,
             new: true,
         });
@@ -341,6 +364,51 @@ mod tests {
             (8, 0, "src/health.ts")
         );
         assert_eq!((c[2].added, c[2].removed), (0, 0));
+    }
+
+    #[test]
+    fn pasta_nova_vira_uma_linha() {
+        let root = std::env::temp_dir().join(format!("maestro-ch-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("src")).unwrap();
+        let g = |a: &[&str]| {
+            assert!(
+                Command::new("git")
+                    .arg("-C")
+                    .arg(&root)
+                    .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+                    .args(a)
+                    .output()
+                    .unwrap()
+                    .status
+                    .success()
+            )
+        };
+        g(&["init", "-q", "-b", "main"]);
+        fs::write(root.join("src/a.ts"), "a\n").unwrap();
+        g(&["add", "."]);
+        g(&["commit", "-qm", "x"]);
+        fs::write(root.join("src/a.ts"), "a\nb\n").unwrap();
+        fs::create_dir_all(root.join("docs/adr/sub")).unwrap();
+        fs::write(root.join("docs/adr/1.md"), "1\n2\n").unwrap();
+        fs::write(root.join("docs/adr/2.md"), "1\n").unwrap();
+        fs::write(root.join("docs/adr/sub/3.md"), "1\n").unwrap();
+        fs::write(root.join("solto.md"), "1\n").unwrap();
+        let c = changes(&root).unwrap();
+        let got: Vec<_> = c
+            .files
+            .iter()
+            .map(|f| (f.path.as_str(), f.added, f.new))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("src/a.ts", 1, false),
+                ("docs/", 4, true),
+                ("solto.md", 1, true)
+            ]
+        );
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
