@@ -24,6 +24,8 @@ pub enum SidebarEvent {
     NewFeature,
     /// clique num arquivo de "Mudanças": abre a revisão nele
     OpenReview(String),
+    /// `↗` na linha de "Mudanças": o arquivo no editor externo; `None` = a worktree
+    OpenIn(Option<String>),
     /// clique em "Arquivos": abre o arquivo no editor
     OpenFile(String),
     /// resultado da busca no projeto: (arquivo, linha 0-based)
@@ -1700,34 +1702,6 @@ impl Sidebar {
                 .child(label)
         };
         let mut list = div().flex().flex_col().pt(px(4.)).pb(px(10.));
-        let row = |id: String, dir: &str, name: &str| {
-            let dir = if dir.is_empty() {
-                String::new()
-            } else {
-                format!("{dir}/")
-            };
-            div()
-                .id(SharedString::from(id))
-                .cursor_pointer()
-                .hover(|d| d.bg(t.raise))
-                .flex()
-                .gap(px(6.))
-                .items_center()
-                .px(px(12.))
-                .py(px(3.))
-                .child(
-                    div()
-                        .flex()
-                        .flex_1()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .font_family(t.mono.clone())
-                        .text_size(px(13.))
-                        .child(div().text_color(t.muted).child(dir))
-                        .child(name.to_string()),
-                )
-        };
         let split = |p: &str| -> (String, String) {
             p.rsplit_once('/')
                 .map_or((String::new(), p.to_string()), |(d, n)| {
@@ -1939,13 +1913,40 @@ impl Sidebar {
             }
             (None, Some(c)) => {
                 for f in &c.files {
-                    let (dir, name) = split(&f.path);
-                    let path = f.path.clone();
+                    let folder = f.path.ends_with('/');
+                    let (dir, name) = if folder {
+                        (String::new(), f.path.clone())
+                    } else {
+                        split(&f.path)
+                    };
+                    let (path, open) = (f.path.clone(), (!folder).then(|| f.path.clone()));
                     list = list.child(
-                        row(format!("ch:{}", f.path), &dir, &name)
+                        div()
+                            .id(SharedString::from(format!("ch:{}", f.path)))
+                            .group("chrow")
+                            .cursor_pointer()
+                            .hover(|d| d.bg(t.raise))
+                            .flex()
+                            .gap(px(6.))
+                            .items_center()
+                            .px(px(12.))
+                            .py(px(3.))
+                            .font_family(t.mono.clone())
+                            .text_size(px(13.))
                             .on_click(cx.listener(move |_, _, _, cx| {
                                 cx.emit(SidebarEvent::OpenReview(path.clone()))
                             }))
+                            .child(div().flex_none().whitespace_nowrap().child(name))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .whitespace_nowrap()
+                                    .text_ellipsis_start()
+                                    .text_color(t.muted)
+                                    .child(dir),
+                            )
                             .child(
                                 div()
                                     .flex_none()
@@ -1958,6 +1959,22 @@ impl Sidebar {
                                         f.added,
                                         f.removed
                                     )),
+                            )
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("oe:{}", f.path)))
+                                    .flex_none()
+                                    .px(px(2.))
+                                    .rounded(px(3.))
+                                    .text_color(t.muted)
+                                    .opacity(0.)
+                                    .group_hover("chrow", |s| s.opacity(1.))
+                                    .hover(|s| s.text_color(t.fg).bg(t.accent_soft))
+                                    .on_click(cx.listener(move |_, _, _, cx| {
+                                        cx.stop_propagation();
+                                        cx.emit(SidebarEvent::OpenIn(open.clone()))
+                                    }))
+                                    .child("↗"),
                             ),
                     );
                 }

@@ -397,6 +397,7 @@ impl Shell {
                 match e {
                     SidebarEvent::NewFeature => this.want_dialog = true,
                     SidebarEvent::OpenReview(p) => this.want_review = Some(Some(p.clone())),
+                    SidebarEvent::OpenIn(p) => this.open_in(p.clone().map(|p| (p, 1)), None, cx),
                     SidebarEvent::OpenFile(p) => this.want_file = Some(p.clone()),
                     SidebarEvent::OpenFileAt(p, l) => this.want_file_at = Some((p.clone(), *l)),
                     SidebarEvent::Merged(wt, iid, branch) => {
