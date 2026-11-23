@@ -47,6 +47,9 @@ pub struct Shell {
     /// a gaveta "Perguntar ao Claude" e o Ctrl+Shift+K
     ask: Option<Entity<AskView>>,
     kcmd: Option<Entity<KcmdView>>,
+    /// o editor preferido (rótulo do botão) e o menu "Abrir em" aberto
+    editor_label: Option<&'static str>,
+    open_in_menu: Option<Vec<(&'static str, &'static str)>>,
     /// (id, texto, patch que refaz o que foi desfeito)
     toasts: Vec<(usize, String, Option<Redo>)>,
     /// toast de notificação de MR: id do toast → `path!iid` do "Abrir"
@@ -480,6 +483,9 @@ impl Shell {
             compare: None,
             ask: None,
             kcmd: None,
+            editor_label: crate::open_in::preferred(&crate::open_in::detect())
+                .map(|f| f.editor.label),
+            open_in_menu: None,
             toasts: Vec::new(),
             toast_open: Vec::new(),
             want_merge: None,
@@ -566,7 +572,7 @@ impl Shell {
                 "p" => return self.toggle_palette(window, cx),
                 "e" => return self.toggle_review(None, window, cx),
                 "l" => return self.run(Cmd::SendSelection, window, cx),
-                "o" => return self.run(Cmd::OpenFileMenu, window, cx),
+                "o" => return self.run(Cmd::OpenIn(None, None), window, cx),
                 "b" => return self.run(Cmd::ToggleLeft, window, cx),
                 "f" if self.in_vault => return self.run(Cmd::NoteFormat, window, cx),
                 "f" => return self.run(Cmd::Files, window, cx),
@@ -1516,6 +1522,7 @@ impl Shell {
                     this.remove_feature_at(Some(root), None, window, cx)
                 }
                 review::Event::AskClaude(c) => this.open_ask(c.clone(), window, cx),
+                review::Event::OpenIn(p, ln) => this.open_in(Some((p.clone(), *ln)), None, cx),
                 review::Event::MrOpened => {
                     if this.tour.is_none() && !tour::seen("mrtab") {
                         this.tour = Some((tour::MRTAB, "mrtab", 0));
@@ -2342,6 +2349,170 @@ impl Shell {
         self.open_palette(items, "Nome do arquivo…", "Nada encontrado", window, cx);
     }
 
+    fn open_in(
+        &mut self,
+        at: Option<(String, u32)>,
+        id: Option<&'static str>,
+        cx: &mut Context<Self>,
+    ) {
+        let root = match (&at, &self.review) {
+            (Some(_), Some(r)) => Some(r.read(cx).root.clone()),
+            _ => self
+                .sidebar
+                .as_ref()
+                .and_then(|s| s.read(cx).top_worktree()),
+        };
+        let Some(root) = root else {
+            return self.toast("Nada com pasta em foco para abrir no editor".into(), cx);
+        };
+        self.open_in_menu = None;
+        if let Some(id) = id {
+            crate::open_in::save(id);
+            self.editor_label = crate::open_in::EDITORS
+                .iter()
+                .find(|e| e.id == id)
+                .map(|e| e.label);
+        }
+        let msg = crate::open_in::open(&root, at.as_ref().map(|(p, l)| (p.as_str(), *l)), id);
+        self.toast(msg, cx);
+    }
+
+    fn toggle_open_in_menu(&mut self, cx: &mut Context<Self>) {
+        self.open_in_menu = match self.open_in_menu {
+            Some(_) => None,
+            None => Some(
+                crate::open_in::detect()
+                    .iter()
+                    .map(|f| (f.editor.id, f.editor.label))
+                    .collect(),
+            ),
+        };
+        cx.notify();
+    }
+
+    fn open_in_button(&self, cx: &mut Context<Self>) -> Div {
+        let t = &self.theme;
+        let has = self
+            .sidebar
+            .as_ref()
+            .and_then(|s| s.read(cx).top_worktree())
+            .is_some();
+        let label = self.editor_label.unwrap_or("editor");
+        let mut d = div()
+            .relative()
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .child(
+                div()
+                    .id("open-in")
+                    .flex()
+                    .gap(px(6.))
+                    .items_center()
+                    .when(!has, |d| d.opacity(0.45))
+                    .when(has, |d| d.cursor_pointer())
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(|this, _, _, cx| this.open_in(None, None, cx)))
+                    .child(self.kbd("Ctrl+Shift+O"))
+                    .child("Abrir em")
+                    .child(
+                        div()
+                            .text_color(t.fg)
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(label),
+                    ),
+            )
+            .child(
+                div()
+                    .id("open-in-menu")
+                    .px(px(2.))
+                    .cursor_pointer()
+                    .hover(|d| d.text_color(t.fg))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_open_in_menu(cx)))
+                    .child("▾"),
+            );
+        if let Some(eds) = &self.open_in_menu {
+            let item = |id: &'static str, check: bool, label: &'static str| {
+                div()
+                    .id(SharedString::from(format!("oi-{id}")))
+                    .flex()
+                    .gap(px(6.))
+                    .px(px(10.))
+                    .py(px(4.))
+                    .rounded(px(4.))
+                    .cursor_pointer()
+                    .hover(|d| d.bg(t.accent_soft))
+                    .child(div().w(px(14.)).text_color(t.accent).child(if check {
+                        "✓"
+                    } else {
+                        ""
+                    }))
+                    .child(label)
+            };
+            let mut m = div()
+                .id("open-in-list")
+                .occlude()
+                .absolute()
+                .top(px(24.))
+                .right_0()
+                .min_w(px(260.))
+                .p(px(4.))
+                .flex()
+                .flex_col()
+                .bg(t.raise)
+                .border_1()
+                .border_color(t.line)
+                .rounded(px(6.))
+                .shadow_lg()
+                .text_color(t.fg)
+                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                    this.open_in_menu = None;
+                    cx.notify();
+                }));
+            for &(id, label) in eds {
+                m =
+                    m.child(item(id, Some(label) == self.editor_label, label).on_click(
+                        cx.listener(move |this, _, _, cx| this.open_in(None, Some(id), cx)),
+                    ));
+            }
+            m = m
+                .child(div().my(px(4.)).h(px(1.)).bg(t.line))
+                .child(
+                    item("fm", false, "Gerenciador de arquivos").on_click(cx.listener(
+                        |this, _, _, cx| {
+                            this.open_in_menu = None;
+                            match this
+                                .sidebar
+                                .as_ref()
+                                .and_then(|s| s.read(cx).top_worktree())
+                            {
+                                Some(r) => {
+                                    let m = crate::open_in::file_manager(&r);
+                                    this.toast(m, cx)
+                                }
+                                None => cx.notify(),
+                            }
+                        },
+                    )),
+                )
+                .child(
+                    div()
+                        .px(px(10.))
+                        .py(px(4.))
+                        .text_size(px(11.))
+                        .text_color(t.muted)
+                        .child(if eds.is_empty() {
+                            "Nenhum editor conhecido no PATH"
+                        } else {
+                            "Detectados no PATH · o escolhido fica salvo"
+                        }),
+                );
+            d = d.child(deferred(m));
+        }
+        d
+    }
+
     fn run(&mut self, cmd: Cmd, window: &mut Window, cx: &mut Context<Self>) {
         let sidebar = self.sidebar.clone();
         let focus = |pane: Option<String>, cx: &mut Context<Self>| {
@@ -2802,6 +2973,8 @@ impl Shell {
             Cmd::Review => return self.toggle_review(None, window, cx),
             Cmd::SendSelection => return self.send_selection(window, cx),
             Cmd::OpenFileMenu => return self.open_file_menu(window, cx),
+            Cmd::OpenIn(at, id) => return self.open_in(at, id, cx),
+            Cmd::OpenInMenu => return self.toggle_open_in_menu(cx),
             Cmd::OpenFile(p) => {
                 if self.review.is_none() {
                     self.toggle_review(None, window, cx);
@@ -3286,17 +3459,7 @@ impl Shell {
                     .gap(px(10.))
                     .items_center()
                     .text_color(t.muted)
-                    .child(
-                        div()
-                            .id("files")
-                            .flex()
-                            .gap(px(6.))
-                            .cursor_pointer()
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .on_click(cx.listener(|this, _, w, cx| this.open_file_menu(w, cx)))
-                            .child(self.kbd("Ctrl+Shift+O"))
-                            .child("arquivo"),
-                    )
+                    .child(self.open_in_button(cx))
                     .child(
                         div()
                             .id("cmds")
@@ -3638,7 +3801,7 @@ impl Shell {
         let mut keys = div().flex().flex_col().text_size(px(13.5));
         for (k, v, _) in self.screen_hints(cx).iter().chain(
             [
-                ("Ctrl+Shift+O", "abrir arquivo", true),
+                ("Ctrl+Shift+O", "abrir no editor", true),
                 ("Ctrl+Shift+F", "árvore de arquivos", true),
                 ("Ctrl+F · Ctrl+H", "buscar · substituir no arquivo", true),
                 ("Ctrl+/", "comentar as linhas", true),
