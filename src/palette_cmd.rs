@@ -33,12 +33,9 @@ pub enum Cmd {
     Features,
     Feature(String),
     SendSelection,
-    OpenFileMenu,
     /// a worktree em foco, ou `arquivo:linha` nela, no editor (`None` = o preferido)
     OpenIn(Option<(String, u32)>, Option<&'static str>),
     OpenInMenu,
-    OpenFile(String),
-    Save,
     Affected,
     SendReview,
     OpenMr,
@@ -51,10 +48,6 @@ pub enum Cmd {
     Audit(bool),
     Help,
     Home,
-    /// a árvore do projeto na lateral e o editor, se houver arquivo aberto
-    Files,
-    /// a aba Arquivos com o foco no "buscar no projeto"
-    SearchProject,
     /// "▶ Rodar tarefa…": as tarefas da worktree em foco
     TaskMenu,
     /// (nome, comando) de uma tarefa do repo
@@ -179,8 +172,6 @@ pub fn commands() -> Vec<Item> {
             Some(OpenIn(None, None)),
         ),
         c("Abrir em: escolher editor", "", Some(OpenInMenu)),
-        c("Arquivo: Abrir…", "", Some(OpenFileMenu)),
-        c("Arquivo: Salvar", "Ctrl+S", Some(Save)),
         c(
             "Layout: Mostrar/ocultar lateral",
             "Ctrl+Shift+B",
@@ -194,8 +185,6 @@ pub fn commands() -> Vec<Item> {
         ),
         c("Ir para: Features", "Alt+1", Some(Features)),
         c("Ir para: MRs", "Alt+2", Some(Mrs)),
-        c("Arquivos: Árvore do projeto", "Ctrl+Shift+F", Some(Files)),
-        c("Arquivos: Buscar no projeto", "", Some(SearchProject)),
         c("MR: Revisar com Claude", "⇧R", Some(MrReview)),
         c("Ir para: News", "Alt+5", Some(News)),
         c("News: Resumo do dia", "", Some(NewsBrief)),
@@ -207,7 +196,7 @@ pub fn commands() -> Vec<Item> {
         c("PRCs: atualizar", "r", Some(PrcRefresh)),
         c("Ajuda: Atalhos e decisões de UX", "?", Some(Help)),
         c("Terminal: Rodar tarefa…", "", Some(TaskMenu)),
-        c("Editor: Problemas", "", Some(Problems)),
+        c("Problemas", "", Some(Problems)),
         c(
             "Terminal: Comando por descrição",
             "Ctrl+Shift+K",
