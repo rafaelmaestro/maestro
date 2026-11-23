@@ -9,7 +9,6 @@ use serde_json::Value;
 
 use crate::{
     diff::{self, FileDiff, Kind},
-    editor,
     form::{FieldEvent, TextField, button, checkbox},
     mr::Status,
     mr_notify::{self, Notice},
@@ -1888,7 +1887,7 @@ impl MrsView {
     fn code(&self, text: &str) -> StyledText {
         let hl: Vec<_> = diff::highlight(text)
             .into_iter()
-            .map(|(r, tok)| (r, editor::style(&self.theme, tok)))
+            .map(|(r, tok)| (r, diff::style(&self.theme, tok)))
             .collect();
         StyledText::new(text.to_string()).with_highlights(hl)
     }

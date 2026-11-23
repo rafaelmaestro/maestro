@@ -10,8 +10,6 @@ futures = "0.3"
 # o mesmo do gpui (sem download novo): só para o ícone da janela no X11
 image = { version = "0.25", default-features = false, features = ["png"] }
 gpui-kit = "=0.7.0"
-# a mesma do gpui-base: os providers do editor recebem esses tipos
-lsp-types = "=0.97.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
