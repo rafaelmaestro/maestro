@@ -3,7 +3,6 @@ mod ask;
 mod audit;
 mod audit_view;
 mod binds;
-mod blame;
 mod braille;
 mod card_tab;
 mod changes;
@@ -11,7 +10,6 @@ mod cleanup;
 mod compare;
 mod confirm;
 mod diff;
-mod editor;
 mod feature;
 mod form;
 mod ghostty;
@@ -19,8 +17,6 @@ mod graph;
 mod herdr;
 mod jira;
 mod keys;
-mod lsp;
-mod lsp_editor;
 mod mascot;
 mod mouse;
 mod mr;
@@ -123,18 +119,6 @@ fn main() {
             KeyBinding::new("tab", terminal::SendTab, Some("Terminal")),
             KeyBinding::new("shift-tab", terminal::SendBackTab, Some("Terminal")),
             KeyBinding::new("tab", ask::NextOption, Some("Kcmd")),
-            // Ctrl+Shift+setas trocam o foco como no Ghostty; seleção por palavra fica no Shift+Alt
-            KeyBinding::new(
-                "ctrl-shift-left",
-                editor::LeaveEditor,
-                Some("MaestroEditor > Input"),
-            ),
-            // ponytail: o Ctrl+clique do gpui-base não navegou no teste; F12 chama o mesmo GoToDefinition
-            KeyBinding::new(
-                "f12",
-                gpui_kit::component::input::GoToDefinition,
-                Some("MaestroEditor > Input"),
-            ),
         ]);
         // a sans do chrome do protótipo vai embutida: não depende de a máquina ter a fonte
         let _ = cx.text_system().add_fonts(vec![
