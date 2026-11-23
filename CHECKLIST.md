@@ -447,6 +447,14 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
   - [ ] Primeira corrida real com o Rafael: análise, contingência e Criar ACR de ponta a ponta
 - Desvio combinado: coluna com dois status ("com dev / fornecedor") usa o primeiro ao soltar; trocar por escolha se fizer falta
 
+## Editor externo (troca o editor interno pelo editor de preferência)
+
+- [x] Protótipo: "Abrir em ▾" no topo (`Ctrl+Shift+O`), Mudanças com nome primeiro e pasta nova numa linha, `↗` no arquivo e no bloco do diff, Problemas só com tarefas; sem abas de arquivo, Histórico, LSP e aba Arquivos
+- [ ] Abrir no editor: detecção no `PATH`, preferido em `~/.config/maestro/editor.json`, worktree e `arquivo:linha` na janela da worktree
+- [ ] Mudanças refeita: nome primeiro, pasta cortada pela esquerda, pasta não rastreada numa linha
+- [ ] Remover editor interno, LSP, aba Arquivos e Histórico; README sem "Editor com LSP"
+- Desvio: o artifact aprovado (GZF9CWBQ…) estava atrás do repo (sem PRCs); o protótipo desta rodada está publicado em claude.ai/artifact/N8zbGP664BMZGS6fxJCnDP
+
 ## Backlog (não entra sem decisão)
 
 - Conflitos entre features (ripwire branch conflicts)

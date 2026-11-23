@@ -113,6 +113,19 @@ body.resizing{cursor:col-resize;user-select:none}
 .flist button.on{background:var(--accent-soft)}
 .flist .nm{font:12px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .flist .nm .dir{color:var(--muted)}
+.chrow{grid-template-columns:auto minmax(0,1fr) auto auto!important}
+.chrow .fn{font:12px var(--mono);white-space:nowrap}
+.chrow .fd{font:12px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
+.chrow .fd bdi{direction:ltr}
+.chrow .oe{opacity:0;color:var(--muted);font-size:12px;padding:0 2px;border-radius:3px}
+.chrow:hover .oe,.chrow:focus-visible .oe{opacity:1}
+.chrow .oe:hover{color:var(--fg);background:var(--accent-soft)}
+.lhead{display:flex;align-items:center;padding:8px 12px 4px;border-top:1px solid var(--line);font-size:12px;color:var(--fg)}
+.oin{display:inline-flex;align-items:center}
+.oin #oiMenu{padding:0 4px;color:var(--muted)}
+.oin #oiMenu:hover{color:var(--fg)}
+.fmenu .ck{width:14px;display:inline-block;color:var(--accent)}
+
 .flist .st{font:11px var(--mono);color:var(--muted)}
 .flist .st.d{color:var(--draft)}
 .flist .none{padding:6px 12px;color:var(--muted);font-size:12px}
@@ -624,7 +637,7 @@ legend{color:var(--muted);font-size:12px;padding:0 4px}
     <span class="sp"></span>
     <span class="tag">protótipo · dados de exemplo</span>
     <span class="hint">
-      <button id="hFile" class="lg"><kbd>Ctrl+Shift+O</kbd> arquivo</button>
+      <span class="oin lg"><button id="hFile" title="Abrir a worktree da feature no editor (Ctrl+Shift+O)"><kbd>Ctrl+Shift+O</kbd> Abrir em <b id="oiName">VS Code</b></button><button id="oiMenu" aria-label="Escolher editor" title="Escolher editor">▾</button></span>
       <button id="hCmd"><kbd>Ctrl+Shift+P</kbd><span class="lg">comandos</span></button>
       <button id="hHelp" aria-label="Atalhos"><kbd>?</kbd></button>
     </span>
@@ -755,7 +768,7 @@ const ccHead = dir => ({c:'cc', t:'', dir});
 const FEATS=[
   {id:'main', branch:'main', dir:ROOT, st:'idle', msg:'sem tarefa', ago:'há 1 h', changes:[], tab:0,
    term:[ccHead(ROOT),{c:'dim',t:'Sessão parada. Escreva abaixo para começar.'}]},
-  {id:'health', branch:'feat/healthcheck', dir:WT+'feat-healthcheck', st:'working', msg:'escrevendo src/health.ts', ago:'agora', changes:D_HEALTH, tab:0, t0:Date.now()-14000,
+  {id:'health', branch:'feat/healthcheck', dir:WT+'feat-healthcheck', st:'working', msg:'escrevendo src/health.ts', ago:'agora', changes:D_HEALTH, untracked:[{dir:'docs/adr/',files:3,lines:84}], tab:0, t0:Date.now()-14000,
    term:[ccHead(WT+'feat-healthcheck'),{c:'u',t:'> cria um endpoint /health que checa o banco e responde 503 se ele cair'},
      {c:'dotw',t:'⏺ Vou criar a rota num arquivo próprio e plugar no app.'},{c:'dot',t:'⏺ Read(src/app.ts)'},{c:'out',t:'  ⎿  Read 6 lines'},{c:'dot',t:'⏺ Write(src/health.ts)'},{c:'out',t:'  ⎿  Wrote 8 lines to src/health.ts'}]},
   {id:'slack', branch:'fix/timeout-slack', dir:WT+'fix-timeout-slack', st:'blocked', msg:'pediu permissão: npm test', ago:'há 3 min', changes:D_SLACK, tab:0, ask:'npm test -- slack', unseen:true,
@@ -933,7 +946,7 @@ const FINDINGS = [
 /* ---------- estado ---------- */
 const S = { mode:'feat', fid:'health', left:true, right:false, ltab:'changes', rtab:'review', file:null, ln:1, col:1,
   ibox:'rev', q:'', isel:0, mr:null, sel:null, drafts:[], editing:null, undo:[], reviewed:{}, mq:[], mascot:null,
-  layout:'split', hideGen:true, collapsed:new Set(), genOpen:false, replying:null, taskProbs:[], lspOff:{}, hist:null,
+  layout:'split', hideGen:true, collapsed:new Set(), genOpen:false, replying:null, taskProbs:[{src:'lint',sev:'warn',file:'src/slack.ts',ln:4,msg:"'channel' is defined but never used (@typescript-eslint/no-unused-vars)"}], lspOff:{}, hist:null,
   newsToken:true, newsOnlyAff:false, nsel:0, viewed:new Set(), vchanged:new Set(['src/handler.ts']), descOpen:true, curFile:null };
 const feat = id => FEATS.find(f=>f.id===(id||S.fid));
 let did=0;
@@ -970,13 +983,15 @@ function renderLeft(){
   h+=`</div><button class="newf" id="newF"><span>+ Nova feature</span><kbd>Alt+N</kbd></button><div class="fsep">Terminais</div><div class="feats">${FEATS.filter(x=>x.kind==='ws').map(featBtn).join('')}</div>`;
   if(f.kind==='ws'){ el.innerHTML=h+'<div class="flist"><div class="none">Pasta fora de repositório git. Aqui é só terminal: abas e splits do herdr, nada para revisar.</div></div>'; bindLeft(el); return; }
   const nd = S.drafts.filter(d=>d.ctx===f.id&&d.state==='draft').length;
-  h+=`<div class="ltabs"><button aria-pressed="${S.ltab==='changes'}" data-lt="changes">Mudanças ${f.changes.length}</button><button aria-pressed="${S.ltab==='files'}" data-lt="files">Arquivos</button></div><div class="flist">`;
-  if (S.ltab==='changes'){
-    if(!f.changes.length) h+='<div class="none">Nada mudou nesta branch.</div>';
+  const ut=f.untracked||[];
+  h+=`<div class="lhead">Mudanças <span class="mono" style="margin-left:6px;color:var(--muted)">${f.changes.length+ut.length}</span></div><div class="flist">`;
+  { S.ltab='changes';
+    if(!f.changes.length&&!ut.length) h+='<div class="none">Nada mudou nesta branch.</div>';
     f.changes.forEach(c=>{ const {a,r}=counts(c); const n=S.drafts.filter(d=>d.ctx===f.id&&d.file===c.path&&d.state==='draft').length; const [dir,nm]=split(c.path);
-      h+=`<button data-ch="${c.path}"><span class="nm"><span class="dir">${dir}</span>${nm}</span><span class="st ${n?'d':''}">${n?n+' coment.':(c.isNew?'novo ':'')+`+${a} −${r}`}</span></button>`; });
+      h+=`<button class="chrow" data-ch="${c.path}" title="${c.path}"><span class="fn">${nm}</span><span class="fd"><bdi>${dir.replace(/\/$/,'')}</bdi></span><span class="st ${n?'d':''}">${n?n+' coment.':(c.isNew?'novo ':'')+`+${a} −${r}`}</span><span class="oe" role="button" data-oe="${c.path}" title="Abrir no ${edName()}">↗</span></button>`; });
+    ut.forEach(u=>h+=`<button class="chrow" data-utd="${u.dir}" title="${u.dir} · pasta nova, ${u.files} arquivos"><span class="fn">${u.dir}</span><span class="fd"></span><span class="st">novo +${u.lines} −0</span><span class="oe" role="button" data-oe="${u.dir}" title="Abrir a pasta no ${edName()}">↗</span></button>`);
     if(f.changes.length) h+=`<div class="none">${f.uncommitted?`${f.uncommitted} arquivo não commitado · `:''}base <span class="mono">main</span>${nd?` · <span style="color:var(--draft)">${nd} comentário${nd>1?'s':''} para o Claude</span>`:''}</div>`;
-  } else { const nmIn=v=>`<div class="fname"><input id="fName" value="${esc(v)}" spellcheck="false" aria-label="Nome"></div>`;
+  } if(false){ const nmIn=v=>`<div class="fname"><input id="fName" value="${esc(v)}" spellcheck="false" aria-label="Nome"></div>`;
     h+=`<div class="fsearch"><input id="fq" value="${esc(S.fq||'')}" placeholder="buscar no projeto" spellcheck="false" aria-label="Buscar no projeto"></div>`;
     if(S.fq&&S.fhits){ h+=S.fhits.length?S.fhits.map(x=>`<button data-hit="${x.p}" data-ln="${x.ln}" class="hit"><span class="nm"><span class="dir">${x.p}:${x.ln}</span></span><span class="ht">${hitHl(x.t,S.fq)}</span></button>`).join('')+`<div class="none">${S.fhits.length} resultado${S.fhits.length>1?'s':''} · Esc volta à árvore</div>`:'<div class="none">Nada encontrado. Esc volta à árvore.</div>'; el.innerHTML=h+'</div>'; bindLeft(el); return; }
     if(S.naming&&S.naming.kind!=='rename') h+=nmIn(S.naming.p?S.naming.p+'/':'');
@@ -1256,7 +1271,9 @@ function bindLeft(el){
   el.querySelectorAll('[data-rmf]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); removeFeatureDlg(feat(b.dataset.rmf)); });
   el.querySelectorAll('[data-stk]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); stackAction(feat(b.dataset.stk)); });
   el.querySelectorAll('[data-lt]').forEach(b=>b.onclick=()=>{ S.ltab=b.dataset.lt; renderLeft(); });
-  el.querySelectorAll('[data-ch]').forEach(b=>b.onclick=()=>openReview(b.dataset.ch));
+  el.querySelectorAll('[data-ch]').forEach(b=>b.onclick=e=>{ if(e.target.closest('[data-oe]')) return; openReview(b.dataset.ch); });
+  el.querySelectorAll('[data-utd]').forEach(b=>b.onclick=e=>{ if(e.target.closest('[data-oe]')) return; toast(`${b.dataset.utd} é pasta nova: o Revisar rola até o primeiro arquivo dela`); openReview(); });
+  el.querySelectorAll('[data-oe]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); openIn(b.dataset.oe); });
   el.querySelectorAll('[data-file]').forEach(b=>b.onclick=()=>openFile(b.dataset.file));
   el.querySelectorAll('[data-file]').forEach(b=>b.oncontextmenu=e=>{ e.preventDefault(); e.stopPropagation(); fileMenu(e,b.dataset.file); });
   const fl=el.querySelector('.flist'); if(fl&&S.ltab==='files') fl.oncontextmenu=e=>{ e.preventDefault(); fileMenu(e,null); };
@@ -1276,6 +1293,20 @@ function bindLeft(el){
   $('#newF').onclick=newFeatureDlg;
   $('#audBtn').onclick=()=>setMode('audit');
 }
+
+const EDS=[['vscode','VS Code','code'],['cursor','Cursor','cursor'],['zed','Zed','zed'],['idea','IntelliJ IDEA','idea']];
+let PREF='vscode';
+function edName(){ return EDS.find(e=>e[0]===PREF)[1]; }
+function openIn(p,ln){ const f=feat(); if(!f||f.kind==='ws'&&!p){ toast('Nada com pasta em foco'); return; }
+  const e=EDS.find(x=>x[0]===PREF), wt=f.dir, at=p?`${p}${ln?':'+ln:''}`:'';
+  const cmd=!p?`${e[2]} ${wt}`:e[0]==='idea'?`idea ${ln?'--line '+ln+' ':''}${wt}/${p}`:e[0]==='zed'?`zed ${wt} ${wt}/${at}`:`${e[2]} ${wt} --goto ${wt}/${at}`;
+  toast(`${p?'Abrindo '+at:'Abrindo a worktree'} no ${e[1]} · ${cmd}`); }
+function oiMenu(){ closeFileMenu(); const a=$('#oiMenu').getBoundingClientRect(); const m=document.createElement('div'); m.className='fmenu'; m.id='fMenu'; m.style.left=Math.max(8,a.right-200)+'px'; m.style.top=(a.bottom+4)+'px'; m.style.minWidth='200px';
+  const add=(h,fn,k)=>{ const b=document.createElement('button'); b.innerHTML=h+(k?`<kbd style="margin-left:auto">${k}</kbd>`:''); b.style.display='flex'; b.style.justifyContent='flex-start'; b.style.gap='6px'; b.onclick=()=>{ closeFileMenu(); fn(); }; m.appendChild(b); };
+  EDS.forEach(e=>add(`<span class="ck">${e[0]===PREF?'✓':''}</span><span>${e[1]}</span>`,()=>{ PREF=e[0]; $('#oiName').textContent=e[1]; renderLeft(); if(S.right) renderRight(); openIn(); },e[0]===PREF?'Ctrl+Shift+O':''));
+  m.insertAdjacentHTML('beforeend','<hr>'); add('<span class="ck"></span><span>Gerenciador de arquivos</span>',()=>toast(`xdg-open ${feat().dir}`));
+  m.insertAdjacentHTML('beforeend','<div style="padding:4px 10px;font-size:11px;color:var(--muted)">Detectados no PATH · o escolhido fica salvo</div>');
+  document.body.appendChild(m); setTimeout(()=>{ document.addEventListener('mousedown',closeFileMenuOut); document.addEventListener('keydown',closeFileMenuOut,true); }); }
 const split = p => { const i=p.lastIndexOf('/'); return [p.slice(0,i+1),p.slice(i+1)]; };
 const counts = f => { let a=0,r=0; f.hunks.forEach(h=>h.l.forEach(l=>{ if(l[0]==='+')a++; if(l[0]==='-')r++; })); return {a,r}; };
 
@@ -1565,7 +1596,7 @@ function renderRight0(){
   const T=(k,l)=>`<button class="t" aria-pressed="${S.rtab===k}" data-rt="${k}">${l}</button>`;
   if(S.rtab==='card'&&ws) S.rtab='review';
   const np=problems().length;
-  const tabs=`<div class="rtabs">${ws?'':T('review','Revisar')+T('mr',f.mr?`MR !${f.mr.iid}`:'MR')+T('card',f.jira?`Card <span class="mono">${f.jira.key}</span>${f.jira.proposed&&f.jira.proposed.length?` <span style="color:var(--yellow)">${f.jira.proposed.length}</span>`:''}`:'Card')}${(S.open||[]).map(p=>{ const dirty=F[p].text!==F[p].saved; return `<button class="t" aria-pressed="${S.rtab==='file'&&S.file===p}" data-of="${p}" title="${p}">${p.split('/').pop()}<span class="cx${dirty?' dirty':''}" data-cx="${p}" role="button" aria-label="Fechar ${p}" title="${dirty?'Alterações não salvas: × fecha descartando':'Fechar'}">${dirty?'●':'×'}</span></button>`; }).join('')}${S.file?T('hist','Histórico'):''}${ws?'':T('prob',`Problemas${np?` <span class="mono" style="color:var(--bad)">${np}</span>`:''}`)}<span class="sp"></span><button class="x" id="rClose" title="Ctrl+Shift+E" aria-label="Fechar painel">×</button></div>`;
+  const tabs=`<div class="rtabs">${ws?'':T('review','Revisar')+T('mr',f.mr?`MR !${f.mr.iid}`:'MR')+T('card',f.jira?`Card <span class="mono">${f.jira.key}</span>${f.jira.proposed&&f.jira.proposed.length?` <span style="color:var(--yellow)">${f.jira.proposed.length}</span>`:''}`:'Card')}${ws?'':T('prob',`Problemas${np?` <span class="mono" style="color:var(--bad)">${np}</span>`:''}`)}<span class="sp"></span><button class="x" id="rClose" title="Ctrl+Shift+E" aria-label="Fechar painel">×</button></div>`;
   if(S.rtab==='file' && S.file){
     const py=/\.py$/.test(S.file)&&!S.lspOff[S.file];
     el.innerHTML=tabs+(py?`<div class="lspbar" role="status"><span>Sem servidor de linguagem para Python · instale com <span class="mono">npm i -g pyright</span></span><button class="btn" id="lspCp">Copiar</button><span class="sp"></span><button id="lspX" aria-label="Dispensar">×</button></div>`:'')+`<div class="ed"><div class="gut" id="gut"></div><div class="edwrap" id="edw"><pre id="hl" aria-hidden="true"></pre><textarea id="code" spellcheck="false" aria-label="Editor ${S.file}"></textarea><div id="edOv"></div></div></div>`;
@@ -1579,7 +1610,7 @@ function renderRight0(){
     if(S.gotoLn){ const ls=ta.value.split('\n'); const pos=ls.slice(0,S.gotoLn-1).reduce((a,l)=>a+l.length+1,0); S.ln=S.gotoLn; S.col=1; S.gotoLn=null; setTimeout(()=>{ ta.focus(); ta.setSelectionRange(pos,pos); ta.scrollTop=Math.max(0,(S.ln-6)*20); paintBlame(); renderStatus(); }); }
     else setTimeout(paintBlame);
   } else if(S.rtab==='hist' && S.file){ el.innerHTML=tabs+renderHist(); bindHist(el); }
-  else if(S.rtab==='prob'){ el.innerHTML=tabs+renderProb(); el.querySelectorAll('[data-pb]').forEach(b=>b.onclick=()=>{ const p=problems()[+b.dataset.pb]; S.gotoLn=p.ln; openFile(p.file); }); }
+  else if(S.rtab==='prob'){ el.innerHTML=tabs+renderProb(); el.querySelectorAll('[data-pb]').forEach(b=>b.onclick=()=>{ const p=problems()[+b.dataset.pb]; openIn(p.file,p.ln); }); }
   else if(S.rtab==='mr'){ el.innerHTML=tabs+renderMRTab(f); bindMRTab(el,f); bindMRTab2(el,f); }
   else if(S.rtab==='card'){ el.innerHTML=tabs+renderCardTab(f); bindCardTab(el,f); }
   else if(ws){ el.innerHTML=tabs+'<div class="empty"><h3>Terminal fora de repositório</h3><p>Aqui não há mudanças nem MR para revisar.</p></div>'; }
@@ -1670,8 +1701,8 @@ function renderHist(){ const hs=histOf(S.file), sel=S.hist&&S.hist.file===S.file
   return `<div class="rtool"><span class="mono">${S.file}</span><span class="muted">git log --follow · ${hs.length} commits</span></div><div class="hist">${hs.map(x=>`<button class="hc ${x[0]===sel?'on':''}" data-hc="${x[0]}"><span class="sha">${x[0]}</span><span>${esc(x[3])}<br><span class="muted" style="font-size:12px">${esc(x[2])} · ${x[1]}</span></span><span class="mono muted">${x[4]}</span></button>`).join('')}
     ${fake?`<div class="diff" style="flex:none;overflow:visible">${diffFile(fake,'hist')}</div>`:'<div class="none" style="padding:10px 12px;color:var(--muted)">Clique num commit para ver o diff deste arquivo nele.</div>'}</div>`; }
 function bindHist(el){ el.querySelectorAll('[data-hc]').forEach(b=>b.onclick=()=>{ S.hist={file:S.file,sha:b.dataset.hc}; renderRight(); }); }
-function problems(){ const out=[]; Object.entries(DIAG).forEach(([file,ds])=>ds.forEach(d=>out.push({...d,file,src:'LSP'}))); S.taskProbs.forEach(p=>out.push(p)); return out; }
-function renderProb(){ const ps=problems(); if(!ps.length) return '<div class="empty"><h3>Nenhum problema</h3><p>Diagnósticos do servidor de linguagem e erros das tarefas aparecem aqui.</p></div>';
+function problems(){ const out=[]; S.taskProbs.forEach(p=>out.push(p)); return out; }
+function renderProb(){ const ps=problems(); if(!ps.length) return '<div class="empty"><h3>Nenhum problema</h3><p>Os erros das tarefas (build, lint, test) aparecem aqui. O clique abre o arquivo na linha no seu editor.</p></div>';
   const g=src=>{ const xs=ps.map((p,i)=>({...p,i})).filter(p=>p.src===src); return xs.length?`<div class="grp">${src==='LSP'?'Servidor de linguagem':'Tarefa: '+esc(src)}</div>`+xs.map(p=>`<button data-pb="${p.i}"><span style="color:${p.sev==='err'?'var(--bad)':'var(--yellow)'}">${p.sev==='err'?'✗':'⚠'}</span><span>${esc(p.msg)}</span><span class="loc">${p.file}:${p.ln}</span></button>`).join(''):''; };
   return `<div class="prob">${g('LSP')}${[...new Set(S.taskProbs.map(p=>p.src))].map(g).join('')}</div>`; }
 function save(){ if(!(S.right&&S.rtab==='file'&&S.file)) return; if(F[S.file].text===F[S.file].saved){ toast('Nada a salvar'); return; } F[S.file].saved=F[S.file].text; renderRight(); renderLeft(); renderStatus(); toast(`Salvo: ${S.file}`); }
@@ -1714,11 +1745,11 @@ function lineExtras(f,l,ctx,side){
 }
 function diffFile(f,ctx){
   const {a,r}=counts(f), mr=ctx==='mr', ro=mr||ctx==='hist', col=mr&&S.collapsed.has(f.path), split=mr&&S.layout==='split';
-  let h=`<div id="F-${f.path}"><div class="fh ${mr?'col':''}" ${mr?`data-col="${f.path}" title="Clique para ${col?'expandir':'colapsar'}"`:''}>${mr?`<span class="tw" aria-hidden="true">${col?'▸':'▾'}</span>`:''}<span class="p">${f.path}</span>${f.isNew?'<span class="pill new">novo</span>':''}${f.gen?'<span class="pill gen" title="lockfile ou arquivo gerado">gerado</span>':''}<span class="plus">+${a}</span><span class="minus">−${r}</span>${f.userEdited?'<span class="badge">editado por você</span>':''}${!ro&&f.turn?`<span class="muted" style="font-size:11px">turno ${f.turn}</span>`:''}<span class="sp"></span>${col?`<span class="muted" style="font-size:12px">${THREADS.filter(t=>t.file===f.path).length?THREADS.filter(t=>t.file===f.path).length+' thread(s) · ':''}${S.viewed.has(f.path)?'visto':'colapsado'}</span>`:''}${mr&&S.vchanged.has(f.path)?'<span class="pill inc" title="mudou num commit depois que você marcou como visto">mudou desde que você viu</span>':''}${mr?`<label class="vw" data-vw="${f.path}" title="Marcar como visto (V)"><input type="checkbox" ${S.viewed.has(f.path)?'checked':''}> Visto</label>`:''}${!ro&&F[f.path]?`<button class="btn" data-open="${f.path}">Abrir no editor</button>`:''}</div>`;
+  let h=`<div id="F-${f.path}"><div class="fh ${mr?'col':''}" ${mr?`data-col="${f.path}" title="Clique para ${col?'expandir':'colapsar'}"`:''}>${mr?`<span class="tw" aria-hidden="true">${col?'▸':'▾'}</span>`:''}<span class="p">${f.path}</span>${f.isNew?'<span class="pill new">novo</span>':''}${f.gen?'<span class="pill gen" title="lockfile ou arquivo gerado">gerado</span>':''}<span class="plus">+${a}</span><span class="minus">−${r}</span>${f.userEdited?'<span class="badge">editado por você</span>':''}${!ro&&f.turn?`<span class="muted" style="font-size:11px">turno ${f.turn}</span>`:''}<span class="sp"></span>${col?`<span class="muted" style="font-size:12px">${THREADS.filter(t=>t.file===f.path).length?THREADS.filter(t=>t.file===f.path).length+' thread(s) · ':''}${S.viewed.has(f.path)?'visto':'colapsado'}</span>`:''}${mr&&S.vchanged.has(f.path)?'<span class="pill inc" title="mudou num commit depois que você marcou como visto">mudou desde que você viu</span>':''}${mr?`<label class="vw" data-vw="${f.path}" title="Marcar como visto (V)"><input type="checkbox" ${S.viewed.has(f.path)?'checked':''}> Visto</label>`:''}${!ro?`<button class="btn" data-open="${f.path}">Abrir no editor</button>`:''}</div>`;
   if(col) return h+'</div>';
   f.hunks.forEach((hk,hi)=>{
     const ask=ctx!=='hist'?`<button class="ask" data-ask="${f.path}|${hi}" title="Perguntar ao Claude sobre este bloco (?)">?</button>`:'';
-    h+=`<div class="hh ${hk.ok?'okh':''}" data-hunk><span>${esc(hk.h)}</span><span class="hunkacts">${ask}${ro?'':hk.ok?'<span>✓ aceito</span>':`<button data-hacc="${f.path}|${hi}">✓ Aceitar</button><button data-hrej="${f.path}|${hi}">↶ Desfazer</button>`}</span></div>`;
+    h+=`<div class="hh ${hk.ok?'okh':''}" data-hunk><span>${esc(hk.h)}</span><span class="hunkacts">${ask}${ro?'':`<button data-hoe="${f.path}|${((hk.h.match(/\+(\d+)/)||[])[1])||1}" title="Abrir no ${edName()} nesta linha">↗ Editor</button>`}${ro?'':hk.ok?'<span>✓ aceito</span>':`<button data-hacc="${f.path}|${hi}">✓ Aceitar</button><button data-hrej="${f.path}|${hi}">↶ Desfazer</button>`}</span></div>`;
     if(split) sbsPairs(hk.l).forEach(([L,R])=>{ h+=`<div class="sbs">${halfRow(f,L,'L')}${halfRow(f,R,'R')}</div>`; if(L&&L[0]==='-') h+=lineExtras(f,L,ctx,'L'); if(R) h+=lineExtras(f,R,ctx,'R'); });
     else hk.l.forEach((l,li)=>{ h+=lineRow(f,l,ctx,hi,li,hk.ok); h+=lineExtras(f,l,ctx,''); });
   });
@@ -1747,7 +1778,8 @@ function addReply(tid){ const ta=$('#rp-'+tid); if(!ta||!ta.value.trim()){ toast
 function bindDiff(el){
   const ctx = S.mode==='mr' ? 'mr' : S.fid;
   el.querySelectorAll('.dl').forEach(r=>r.onclick=e=>{ const n=+r.dataset.n||null, o=+r.dataset.o||null; if(!n&&!o) return; S.sel={file:r.dataset.file,n,o:n?null:o,ctx}; if(e.target.classList.contains('cm')) newDraft(); else { el.querySelectorAll('.dl.sel').forEach(x=>x.classList.remove('sel')); r.classList.add('sel'); } });
-  el.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openFile(b.dataset.open));
+  el.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openIn(b.dataset.open));
+  el.querySelectorAll('[data-hoe]').forEach(b=>b.onclick=()=>{ const [p,ln]=b.dataset.hoe.split('|'); openIn(p,+ln); });
   el.querySelectorAll('[data-col]').forEach(h=>h.onclick=e=>{ if(e.target.closest('button')) return; const p=h.dataset.col; S.collapsed.has(p)?S.collapsed.delete(p):S.collapsed.add(p); rerender(); });
   el.querySelectorAll('[data-ask]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); const [p,hi]=b.dataset.ask.split('|'); openAsk(ctx,p,+hi); });
   el.querySelectorAll('[data-rep]').forEach(b=>b.onclick=()=>{ S.replying=b.dataset.rep; rerender(); const ta=$('#rp-'+b.dataset.rep); if(ta) ta.focus(); });
@@ -2579,7 +2611,6 @@ const TOURS={
   vault:[{sel:'#left [data-vgo="graph"]',t:'O <b>Grafo</b> mostra todas as notas e [[links]] do seu vault, como no Obsidian, mais as features e MRs ativos ligados aos repos.'},{sel:'#left [data-vgo="today"]',t:'<b>Hoje</b> é a daily: a fila do dia, que o Maestro marca com [x] quando a tarefa termina.'},{sel:'#center .card2',t:'A nota, editável, com os links dela e onde ela é mencionada. A nota do repo entra no contexto de toda feature.'}],
   audit:[{sel:'#auNew',t:'A auditoria nunca roda sozinha. Aqui você escolhe incremental ou completa e vê o custo antes.'}],
   mr:[{sel:'#center .rtool',t:'Lado a lado é o padrão; <b>Unificado</b> e <b>Ocultar gerados</b> ficam aqui, e ▾ no arquivo colapsa. <b>Aprovar</b> e <b>Merge</b> estão no cabeçalho; <b>Responder</b> numa thread vira rascunho da review. <kbd>?</kbd> num bloco pergunta ao Claude.'}],
-  file:[{sel:'#right .ed',t:'O editor fala com o servidor de linguagem: sublinhado é diagnóstico, o mouse em cima mostra o tipo, <kbd>.</kbd> completa e Ctrl+clique vai para a definição. O blame da linha aparece no fim dela.'}],
   news:[{sel:'#center .news',t:'Notícias do daily.dev filtradas pelos seus repos e pelo vault. Cada item diz por que apareceu e o que pode afetar.'}],
   mrs:[{sel:'#center .list',t:'MRs de outras pessoas. <kbd>⇧R</kbd> roda o revisor; os achados viram rascunhos que só você vê até publicar.'}],
 };
@@ -2741,7 +2772,7 @@ function paintBrief(){ let s=$('#briefSlot'); if(!s){ s=document.createElement('
 
 /* ---------- dicas e status ---------- */
 const HINTS={
-  feat:[['Alt+T','nova aba'],['Alt+[ ]','trocar aba'],['Ctrl+Shift+Espaço','próximo da fila'],['Ctrl+Shift+1…9','feature'],['Ctrl+Shift+E','revisar mudanças'],['Ctrl+Shift+\\','dividir'],['Ctrl+Shift+Enter','empilhar'],['Ctrl+Shift+←→','pane ↔ editor'],['Ctrl+Shift+K','comando por descrição'],['Ctrl+A','herdr'],['Ctrl+Shift+L','seleção → Claude'],['Alt+N','nova feature'],['?','atalhos']],
+  feat:[['Alt+T','nova aba'],['Alt+[ ]','trocar aba'],['Ctrl+Shift+Espaço','próximo da fila'],['Ctrl+Shift+1…9','feature'],['Ctrl+Shift+E','revisar mudanças'],['Ctrl+Shift+\\','dividir'],['Ctrl+Shift+Enter','empilhar'],['Ctrl+Shift+←→','pane ↔ revisar'],['Ctrl+Shift+K','comando por descrição'],['Ctrl+A','herdr'],['Ctrl+Shift+L','seleção → Claude'],['Alt+N','nova feature'],['?','atalhos']],
   mrs:[['j k','navegar'],['Enter','abrir'],['O','abrir no GitLab'],['⇧R','revisar com Claude'],['/','filtrar']],
   vault:[['Alt+7','nova nota'],['Ctrl+Shift+F','formatar com IA'],['clique','abrir nota'],['[[link]]','navegar'],['◎ Grafo','visão geral'],['Hoje','daily'],['?','atalhos']],
   audit:[['Nova auditoria…','incremental ou completa'],['espaço','marcar achado'],['?','atalhos']],
@@ -2804,7 +2835,7 @@ const CMDS=[
   ['Terminal: Juntar splits (zoom)','Ctrl+Shift+Z',()=>herdr(feat(),'z')],
   ['Terminal: Abrir terminal da home','',()=>selectFeat('home')],
   ['Claude: Interromper','Esc / Ctrl+C',()=>interrupt(feat())],
-  ['Arquivo: Abrir…','Ctrl+Shift+O',()=>openPal('file')],
+  ['Abrir no editor (worktree da feature)','Ctrl+Shift+O',()=>openIn()],['Abrir em: escolher editor','',()=>oiMenu()],
   ['Arquivo: Salvar','Ctrl+S',save],
   ['Layout: Mostrar/ocultar lateral','Ctrl+Shift+B',()=>{ S.left=!S.left; renderFrame(); }],
   ['Auditoria: Abrir relatório','',()=>setMode('audit')],
@@ -2816,9 +2847,7 @@ const CMDS=[
   ['Tarefa: test','npm test',()=>runTask('test')],
   ['Tarefa: lint','npm run lint',()=>runTask('lint')],
   ['Tarefa: build','npm run build',()=>runTask('build')],
-  ['Editor: Problemas','',()=>{ S.mode='feat'; S.right=true; S.rtab='prob'; render(); }],
-  ['Editor: Abrir src/slack.ts (LSP)','',()=>{ S.mode='feat'; render(); openFile('src/slack.ts'); }],
-  ['Editor: Abrir scripts/backfill.py (sem servidor)','',()=>{ S.mode='feat'; render(); openFile('scripts/backfill.py'); }],
+  ['Problemas','',()=>{ S.mode='feat'; S.right=true; S.rtab='prob'; render(); }],
   ['Terminal: Comando por descrição','Ctrl+Shift+K',()=>{ if(S.mode!=='feat'){ S.mode='feat'; render(); } openKcmd(); }],
   ['MR: Alternar lado a lado / unificado','S',()=>{ S.layout=S.layout==='split'?'unified':'split'; if(S.mode==='mr') rerender(); else toast(`Diff de MR: ${S.layout==='split'?'lado a lado':'unificado'}`); }],
   ['MR: Abrir bots-api !124','',()=>openMR(MRS[0])],
@@ -2865,7 +2894,7 @@ function openHelp(){
     ['Prevenção de erros','Remover feature avisa sobre arquivos não commitados; nome de branch repetido é barrado no formulário.'],
     ['Reconhecer, não lembrar','A lateral substitui decorar qual aba do herdr é qual feature; a paleta acha feature pelo nome.'],
     ['Eficiência','Ctrl+Shift+1…9 troca de feature, Ctrl+Shift+L manda a seleção, os binds de split do seu Ghostty funcionam igual, Alt+N cria worktree com .env e npm ci prontos.'],
-    ['Minimalismo','O terminal ocupa o centro; o editor só aparece quando você pede para revisar.'],
+    ['Minimalismo','O terminal ocupa o centro; o diff só aparece quando você pede para revisar, e editar é no seu editor (Ctrl+Shift+O).'],
     ['Recuperação de erros','Erros do formulário dizem o que fazer; comentário que falhou no GitLab mostra o motivo e uma saída.'],
     ['Ajuda','Esta tela; dicas da faixa inferior mudam por modo.']];
   $('#overlay').innerHTML=`<div class="scrim" id="hS"><div class="help" role="dialog" aria-label="Ajuda"><h3>Como usar o protótipo</h3>
@@ -2879,11 +2908,11 @@ function openHelp(){
       <tr><td>7</td><td>Em “Terminais”, <span class="mono">~</span> é um terminal comum, sem Claude.</td></tr>
       <tr><td>★</td><td>Abas de cima = trabalhos. <kbd>Alt+T</kbd> abre outra (o mesmo repo ou outro), <kbd>Alt+[</kbd> <kbd>Alt+]</kbd> trocam, <kbd>Alt+W</kbd> fecha. A lateral é sempre da aba em foco.</td></tr>
       <tr><td>8</td><td>MRs → <span class="mono">bots-api !124</span>: lado a lado, gerados ocultos, ▾ colapsa, <b>Responder</b> vira rascunho, <b>Aprovar</b> e <b>Merge</b> no cabeçalho, <kbd>?</kbd> num bloco pergunta ao Claude.</td></tr>
-      <tr><td>9</td><td><kbd>Ctrl+Shift+O</kbd> <span class="mono">src/slack.ts</span>: sublinhados do LSP, mouse sobre <span class="mono">timeout</span>, digite <span class="mono">this.</span>, Ctrl+clique em <span class="mono">SlackClient</span>; o blame fica no fim da linha.</td></tr>
+      <tr><td>9</td><td><kbd>Ctrl+Shift+O</kbd> abre a worktree da feature no seu editor; o <kbd>▾</kbd> do botão troca o editor (VS Code, Cursor, Zed, IntelliJ). No diff, <span class="mono">↗ Editor</span> abre o bloco na linha.</td></tr>
       <tr><td>10</td><td><b>▶ Rodar tarefa…</b> na barra do terminal → <span class="mono">build</span>: os erros caem em Problemas.</td></tr>
       <tr><td>11</td><td><kbd>Ctrl+Shift+K</kbd> no terminal: descreva o comando; ele é digitado, nunca executado.</td></tr>
       <tr><td>12</td><td><kbd>Alt+5</kbd> abre News. Respostas a threads suas chegam como toast (e notificação do sistema com a janela fora de foco).</td></tr></table></div>
-    <div><h4>Atalhos desta tela</h4><table>${HINTS[S.mode].concat([['Ctrl+P','abrir arquivo'],['Ctrl+Shift+P','comandos'],['Alt+1…6','Features · MRs · Bancos · Vault · News · Fila'],['Alt+8','PRCs'],['Ctrl+Shift+←/→','terminal ↔ editor: na borda do último pane, o foco passa para o editor'],['Shift+Alt+←/→','selecionar por palavra no editor'],['Ctrl+Shift+K','comando por descrição'],['Ctrl+F · Ctrl+H','buscar · substituir no arquivo'],['Ctrl+/','comentar as linhas'],['Alt+↑/↓','mover a linha'],['Ctrl+G','ir para a linha'],['Ctrl+W · Ctrl+Tab','fechar · trocar a aba do editor'],['Árvore','↑/↓, Enter, F2, Delete, Ctrl+C/X/V; arraste para mover']].filter(([k])=>!HINTS[S.mode].some(h=>h[0]===k))).map(([k,v])=>`<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`).join('')}</table>
+    <div><h4>Atalhos desta tela</h4><table>${HINTS[S.mode].concat([['Ctrl+Shift+O','abrir no editor'],['Ctrl+Shift+P','comandos'],['Alt+1…6','Features · MRs · Bancos · Vault · News · Fila'],['Alt+8','PRCs'],['Ctrl+Shift+←/→','terminal ↔ revisar: na borda do último pane, o foco passa para o painel Revisar'],['Ctrl+Shift+K','comando por descrição']].filter(([k])=>!HINTS[S.mode].some(h=>h[0]===k))).map(([k,v])=>`<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`).join('')}</table>
       <p style="margin-top:8px"><b>Regra dos atalhos:</b> com o foco no terminal, Ctrl+tecla vai para o terminal (Ctrl+A herdr, Ctrl+C, Ctrl+L, Ctrl+R, Ctrl+E de readline). Ctrl+Shift+tecla é do Maestro, como no seu Ghostty, e os binds de split do seu ghostty/config viram ações do herdr.</p>
       <p style="margin-top:6px">Visual: fonte, paleta, padding, opacidade e cursor vêm do ghostty/config; o prompt vem do starship.toml; <span class="mono">ls</span>/<span class="mono">cat</span> seguem seus aliases eza/bat. No navegador, os ícones Nerd Font só aparecem porque a JetBrainsMono Nerd Font está instalada na sua máquina. Alt+N aqui é o Ctrl+Shift+N do app (o navegador reserva esse).</p></div></div>
     <h4>Heurísticas de Nielsen aplicadas</h4><table>${N.map(([a,b],i)=>`<tr><td>${i+1}. ${a}</td><td>${b}</td></tr>`).join('')}</table>
@@ -2935,7 +2964,7 @@ document.addEventListener('keydown',e=>{
   if(!ctrl&&!e.altKey&&!e.shiftKey&&!inField&&e.key==='s'&&S.mode==='mr'){ e.preventDefault(); S.layout=S.layout==='split'?'unified':'split'; rerender(); return; }
   if(ctrl&&e.shiftKey){
     const c=e.code, f=feat(), act={
-      KeyP:()=>openPal('cmd'), KeyO:()=>openPal('file'), KeyE:()=>{ if(S.mode!=='feat'){ S.mode='feat'; S.right=true; render(); } else toggleRight(); },
+      KeyP:()=>openPal('cmd'), KeyO:()=>openIn(), KeyE:()=>{ if(S.mode!=='feat'){ S.mode='feat'; S.right=true; render(); } else toggleRight(); },
       KeyB:()=>{ S.left=!S.left; renderFrame(); }, KeyL:sendSel, KeyN:newFeatureDlg, Space:nextAttention,
       Enter:()=>S.mode==='feat'&&herdr(f,'-'), Backslash:()=>S.mode==='feat'&&herdr(f,'v'), KeyZ:()=>S.mode==='feat'&&herdr(f,'z'), KeyT:()=>S.mode==='feat'&&herdr(f,'c'),
       ArrowLeft:()=>{ if(S.mode!=='feat') return; if(e.target.closest&&e.target.closest('#right')){ focusTerm(); return; } herdr(f,'ArrowLeft'); },
@@ -2952,7 +2981,7 @@ document.addEventListener('keydown',e=>{
   if(e.altKey&&!ctrl&&k.toLowerCase()==='w'){ e.preventDefault(); closeWork(WI); return; }
   if(e.altKey&&!ctrl&&(k===']'||k==='[')){ e.preventDefault(); goWork((WI+(k===']'?1:-1)+WORKS.length)%WORKS.length); return; }
   if(inTerm) return;
-  if(ctrl&&!e.shiftKey&&k==='p'){ e.preventDefault(); openPal('file'); return; }
+  
   if(ctrl&&k==='k'){ e.preventDefault(); openPal('cmd'); return; }
   if(ctrl&&k==='Enter'){
     if(S.editing&&e.target.id==='dt-'+S.editing){ e.preventDefault(); saveDraft(S.editing); return; }
@@ -2998,7 +3027,7 @@ document.addEventListener('keydown',e=>{
   if(S.mode==='feat'&&k.length===1&&!(e.target.closest&&e.target.closest('#right'))){ focusTerm(); }
 });
 $('#mVault').onclick=()=>openVault(); $('#mFeat').onclick=()=>setMode('feat'); $('#mMrs').onclick=()=>setMode('mrs'); $('#mNews').onclick=openNews; $('#mDb').onclick=()=>setMode('db'); $('#mPrc').onclick=()=>setMode('prc');
-$('#qBtn').onclick=()=>openPal('att'); $('#hFile').onclick=()=>openPal('file'); $('#hCmd').onclick=()=>openPal('cmd'); $('#hHelp').onclick=()=>openHelp();
+$('#qBtn').onclick=()=>openPal('att'); $('#hFile').onclick=()=>openIn(); $('#oiMenu').onclick=()=>oiMenu(); $('#hCmd').onclick=()=>openPal('cmd'); $('#hHelp').onclick=()=>openHelp();
 if(innerWidth<760){ S.left=false; }
 render();
 
