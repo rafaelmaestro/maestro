@@ -375,6 +375,20 @@ pub fn highlight(line: &str) -> Vec<(std::ops::Range<usize>, Tok)> {
     out
 }
 
+pub fn style(t: &crate::theme::Theme, tok: Tok) -> gpui_kit::HighlightStyle {
+    use gpui_kit::{FontStyle, HighlightStyle, rgb};
+    HighlightStyle {
+        color: Some(match tok {
+            Tok::Comment => t.comment,
+            Tok::Str => rgb(0xf1fa8c).into(),
+            Tok::Keyword => rgb(0xff79c6).into(),
+            Tok::Number => t.accent,
+        }),
+        font_style: (tok == Tok::Comment).then_some(FontStyle::Italic),
+        ..Default::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
