@@ -461,6 +461,7 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 - [x] Servidor local (`127.0.0.1`) com token de uso único, cookie de sessão e expiração (2 h sem uso, 8 h no máximo)
 - [x] Proxy para o herdr (`agent.list`, `agent.read`, `agent.send_keys`, `agent.prompt`) e página do celular
 - [x] ngrok (`--inspect=false`, morto ao fechar), QR, indicador e README "Celular"
+- [x] Celular mostra a conversa do transcript (balões, Markdown, ações recolhidas, cartão com as opções do menu); terminal só sob demanda
 - [ ] Ponta a ponta com o celular no 4G
 - Desvio: o "Ver como fica no celular" do diálogo é só do protótipo (demonstração); o app não tem.
 - Extensão do protótipo: a tela do celular não existia; usa os mesmos tokens do `:root`. Publicado em claude.ai/artifact/N8zbGP664BMZGS6fxJCnDP

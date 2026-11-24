@@ -224,7 +224,7 @@ impl Auth {
 /// Chamada ao herdr: `(método, params)`. Injetada para o roteamento ser testável sem socket.
 pub type Call<'a> = &'a dyn Fn(&str, serde_json::Value) -> io::Result<serde_json::Value>;
 
-const KEYS: &[&str] = &["1", "2", "3", "enter", "esc"];
+const KEYS: &[&str] = &["1", "2", "3", "4", "5", "6", "7", "8", "9", "enter", "esc"];
 const GONE: &str = "O Claude não está mais rodando nesta feature";
 
 fn unescape(s: &str) -> String {
@@ -280,6 +280,30 @@ fn summary(a: &serde_json::Value, labels: &serde_json::Value) -> serde_json::Val
     })
 }
 
+fn title_of(a: &serde_json::Value) -> String {
+    a["terminal_title_stripped"]
+        .as_str()
+        .unwrap_or("")
+        .trim_start_matches(|c: char| !c.is_alphanumeric())
+        .to_string()
+}
+
+/// O transcript de cada pane, guardado por (pane, título): achar exige ler os JSONL do cwd inteiros.
+fn transcript_of(pane: &str, cwd: &str, title: &str) -> Option<std::path::PathBuf> {
+    use std::collections::HashMap;
+    static CACHE: std::sync::OnceLock<Mutex<HashMap<(String, String), std::path::PathBuf>>> =
+        std::sync::OnceLock::new();
+    let key = (pane.to_string(), title.to_string());
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some(p) = cache.lock().unwrap().get(&key).filter(|p| p.is_file()) {
+        return Some(p.clone());
+    }
+    let home = std::path::PathBuf::from(std::env::var_os("HOME")?);
+    let p = crate::session::transcript(&home, cwd, title)?;
+    cache.lock().unwrap().insert(key, p.clone());
+    Some(p)
+}
+
 fn api(req: &Request, call: Call) -> io::Result<Response> {
     let list = call("agent.list", serde_json::json!({}))?;
     let agents = list["agents"].as_array().cloned().unwrap_or_default();
@@ -295,11 +319,32 @@ fn api(req: &Request, call: Call) -> io::Result<Response> {
         return Ok(Response::status(404));
     };
     let pane = unescape(pane);
-    if !agents.iter().any(|a| a["pane_id"] == pane.as_str()) {
+    let Some(agent) = agents.iter().find(|a| a["pane_id"] == pane.as_str()) else {
         return Ok(Response::new(404, "text/plain; charset=utf-8", GONE));
-    }
+    };
     let body: serde_json::Value = serde_json::from_slice(&req.body).unwrap_or_default();
     match (req.method.as_str(), action) {
+        ("GET", "chat") => {
+            let cwd = agent["cwd"].as_str().unwrap_or("");
+            let mut v = match transcript_of(&pane, cwd, &title_of(agent)) {
+                Some(p) => crate::remote_chat::parse(
+                    &crate::remote_chat::tail(&p).unwrap_or_default(),
+                    cwd,
+                ),
+                None => serde_json::json!({ "items": [], "pending": null, "none": true }),
+            };
+            // a tela só é lida quando o agente espera resposta: dali saem as opções do menu
+            if agent["agent_status"] == "blocked" {
+                let r = call(
+                    "agent.read",
+                    serde_json::json!({ "target": pane, "source": "recent_unwrapped", "lines": 40, "format": "text" }),
+                )?;
+                v["options"] = serde_json::json!(crate::remote_chat::menu(
+                    r["read"]["text"].as_str().unwrap_or("")
+                ));
+            }
+            Ok(Response::json(&v))
+        }
         ("GET", "screen") => {
             let r = call(
                 "agent.read",
@@ -313,9 +358,10 @@ fn api(req: &Request, call: Call) -> io::Result<Response> {
             let Some(key) = body["key"].as_str().filter(|k| KEYS.contains(k)) else {
                 return Ok(Response::status(400));
             };
+            // o pane já foi validado pelo agent.list; o agent.send_keys recusa agente que o herdr ainda não firmou
             call(
-                "agent.send_keys",
-                serde_json::json!({ "target": pane, "keys": [key] }),
+                "pane.send_keys",
+                serde_json::json!({ "pane_id": pane, "keys": [key] }),
             )?;
             Ok(Response::json(&serde_json::json!({ "ok": true })))
         }
@@ -893,8 +939,8 @@ mod tests {
         assert_eq!(
             sent[1],
             &(
-                "agent.send_keys".to_string(),
-                serde_json::json!({ "target": "w1:p1", "keys": ["1"] })
+                "pane.send_keys".to_string(),
+                serde_json::json!({ "pane_id": "w1:p1", "keys": ["1"] })
             )
         );
         assert_eq!(sent[2].1["text"], "roda os testes");
@@ -1052,6 +1098,30 @@ mod tests {
         assert!(!m[0][0] && !m[1][1]);
         assert!(m[2][2] && m[2][8] && m[8][2] && !m[3][3] && m[4][4]);
         assert!(m[2][n - 3] && m[n - 3][2]);
+    }
+
+    #[test]
+    fn conversa_sem_transcript_e_menu_do_agente_bloqueado() {
+        let (a, c, now) = paired();
+        let log = Log::default();
+        let r = handle(
+            &with_cookie("/api/agents/w1%3Ap1/chat", &c),
+            &a,
+            now,
+            &fake(log.clone()),
+        );
+        assert_eq!(r.status, 200);
+        let v: serde_json::Value = serde_json::from_slice(&r.body).unwrap();
+        assert_eq!(v["none"], true);
+        assert!(v["options"].is_array());
+        let reads: Vec<_> = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(m, _)| m == "agent.read")
+            .map(|(_, p)| p["source"].clone())
+            .collect();
+        assert_eq!(reads, ["recent_unwrapped"]);
     }
 
     #[test]

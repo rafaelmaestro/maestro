@@ -60,32 +60,36 @@ pub fn project_dir(home: &Path, cwd: &str) -> PathBuf {
     home.join(".claude/projects").join(name)
 }
 
+/// A sessão do pane: o JSONL do cwd cujo título (`agentName`/`aiTitle`) é o título do terminal;
+/// sem título igual, a mais recente do cwd.
+pub fn transcript(home: &Path, cwd: &str, title: &str) -> Option<PathBuf> {
+    let mut files: Vec<(SystemTime, PathBuf)> = std::fs::read_dir(project_dir(home, cwd))
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
+        .filter_map(|p| Some((p.metadata().ok()?.modified().ok()?, p)))
+        .collect();
+    files.sort_by_key(|a| std::cmp::Reverse(a.0));
+    let needles = [
+        format!("\"agentName\":\"{title}\""),
+        format!("\"aiTitle\":\"{title}\""),
+    ];
+    files
+        .iter()
+        .find(|(_, p)| {
+            std::fs::read_to_string(p).is_ok_and(|t| needles.iter().any(|n| t.contains(n)))
+        })
+        .or(files.first())
+        .map(|(_, p)| p.clone())
+}
+
 impl Sessions {
-    /// A sessão do pane: o JSONL do cwd cujo título (`agentName`/`aiTitle`) é o título do terminal;
-    /// sem título igual, a mais recente do cwd.
     fn find(&mut self, home: &Path, pane: &str, cwd: &str, title: &str) -> Option<PathBuf> {
         if let Some(p) = self.by_pane.get(pane) {
             return Some(p.clone());
         }
-        let mut files: Vec<(SystemTime, PathBuf)> = std::fs::read_dir(project_dir(home, cwd))
-            .ok()?
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
-            .filter_map(|p| Some((p.metadata().ok()?.modified().ok()?, p)))
-            .collect();
-        files.sort_by_key(|a| std::cmp::Reverse(a.0));
-        let needles = [
-            format!("\"agentName\":\"{title}\""),
-            format!("\"aiTitle\":\"{title}\""),
-        ];
-        let found = files
-            .iter()
-            .find(|(_, p)| {
-                std::fs::read_to_string(p).is_ok_and(|t| needles.iter().any(|n| t.contains(n)))
-            })
-            .or(files.first())
-            .map(|(_, p)| p.clone())?;
+        let found = transcript(home, cwd, title)?;
         self.by_pane.insert(pane.into(), found.clone());
         Some(found)
     }

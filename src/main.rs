@@ -37,6 +37,7 @@ mod prc;
 mod prc_view;
 mod preflight;
 mod remote;
+mod remote_chat;
 mod remote_view;
 mod review;
 mod session;
