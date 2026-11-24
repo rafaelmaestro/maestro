@@ -364,6 +364,31 @@ body.resizing{cursor:col-resize;user-select:none}
 .phone .ph-empty{padding:48px 24px;display:grid;gap:12px;text-align:center;color:var(--muted)}
 .phone .ph-empty b{color:var(--fg);font-size:17px}
 .phw .tabs{display:flex;gap:6px}
+.phone .chat{display:flex;flex-direction:column;gap:10px;padding:12px 12px 16px}
+.phone .msg-u{align-self:flex-end;max-width:85%;background:var(--accent-soft);border:1px solid rgba(189,147,249,.35);border-radius:14px 14px 4px 14px;padding:8px 12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.phone .msg-c{max-width:100%;line-height:1.5;overflow-wrap:anywhere}
+.phone .msg-c p{margin:0 0 8px}.phone .msg-c p:last-child{margin:0}
+.phone .msg-c code{font:13px var(--mono);background:var(--raise);border-radius:4px;padding:0 4px}
+.phone .msg-c ul,.phone .msg-c ol{margin:0 0 8px;padding-left:20px}
+.phone .msg-c .tbl{display:grid;gap:6px;margin:0 0 8px}
+.phone .msg-c .tbl div{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:14px}
+.phone .msg-c .tbl small{display:block;color:var(--muted);font:12px var(--mono)}
+.phone .tools{align-self:flex-start;max-width:100%;border:1px solid var(--line);border-radius:10px;background:var(--panel);font-size:13px;overflow:hidden}
+.phone .tools>button{display:flex;gap:8px;align-items:center;padding:7px 10px;width:100%;text-align:left;color:var(--muted)}
+.phone .tools>button b{color:var(--fg);font-weight:500}
+.phone .tools ul{list-style:none;margin:0;padding:0 10px 8px;font:12px/1.5 var(--mono);color:var(--muted)}
+.phone .tools li span{color:var(--comment);display:block;padding-left:14px}
+.phone .typing{align-self:flex-start;color:var(--cyan);font-size:13px}
+.phone .ask{border:1px solid var(--orange);border-radius:12px;padding:12px;display:grid;gap:8px;background:rgba(255,184,108,.06)}
+.phone .ask .h{color:var(--orange);font-weight:600;font-size:13px}
+.phone .ask code{font:13px var(--mono);background:var(--win);border-radius:6px;padding:6px 8px;display:block;overflow-wrap:anywhere}
+.phone .ask .why{color:var(--muted);font-size:13px}
+.phone .ask .opts{display:grid;gap:6px}
+.phone .ask .opts button{border:1px solid var(--line);background:var(--raise);border-radius:10px;padding:11px;font-size:15px;text-align:left}
+.phone .ask .opts button.pri{background:var(--accent);border-color:var(--accent);color:#282a36;font-weight:500}
+.phone .ph-top .pill{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 10px;color:var(--muted)}
+.phone .ph-in .send{width:42px;height:42px;border-radius:50%;background:var(--accent);color:#282a36;font-size:18px;flex:none}
+.phone .ph-in .more{width:42px;height:42px;border-radius:50%;border:1px solid var(--line);color:var(--muted);flex:none}
 label{display:flex;gap:8px;align-items:baseline;cursor:pointer}
 label.off{opacity:.5;cursor:default}
 .help{width:780px;max-width:100%;max-height:calc(100% - 20px);overflow:auto;background:var(--raise);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:18px 20px;display:grid;gap:14px}
@@ -2868,6 +2893,30 @@ function remoteDlg(){
   $('#rX').onclick=closeOverlay; $('#rOff').onclick=()=>remoteOff();
   $('#rRe').onclick=()=>{ REMOTE.seed++; remoteDlg(); toast('QR novo. O aparelho pareado antes foi desconectado.'); };
   $('#rPh').onclick=()=>phoneDlg('list'); $('#rX').focus(); }
+/* o celular monta a conversa do transcript do Claude (~/.claude/projects/…jsonl), não do terminal */
+function mdLite(t){ const lines=t.replace(/^⏺ /,'').split('\n'); let h='', list=null, tbl=[];
+  const inline=x=>esc(x).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+  const flush=()=>{ if(list){ h+=`<${list.t}>${list.i.map(i=>`<li>${inline(i)}</li>`).join('')}</${list.t}>`; list=null; } if(tbl.length){ const [hd,...rows]=tbl; h+=`<div class="tbl">${rows.map(r=>`<div>${inline(r[0])}${r.slice(1).map((c,i)=>`<small>${esc(hd[i+1]||'')}: ${esc(c)}</small>`).join('')}</div>`).join('')}</div>`; tbl=[]; } };
+  lines.forEach(l=>{ let m;
+    if(/^\|/.test(l)){ if(!/^\|[\s|:-]+\|$/.test(l)) tbl.push(l.split('|').slice(1,-1).map(c=>c.trim())); return; }
+    if((m=l.match(/^\s*[-*] (.*)/))){ if(!list||list.t!=='ul'){ flush(); list={t:'ul',i:[]}; } list.i.push(m[1]); return; }
+    if((m=l.match(/^\s*\d+\. (.*)/))){ if(!list||list.t!=='ol'){ flush(); list={t:'ol',i:[]}; } list.i.push(m[1]); return; }
+    flush(); if(l.trim()) h+=`<p>${inline(l)}</p>`; });
+  flush(); return h; }
+function chatHtml(f){ const items=[]; let tools=null;
+  const term=f.term.filter(l=>typeof l==='object'&&l.t&&l.c!=='dim'&&l.c!=='hd');
+  term.forEach(l=>{ if(l.c==='u'){ tools=null; items.push({k:'u',t:l.t.replace(/^> /,'')}); }
+    else if(l.c==='dot'){ if(!tools){ tools={k:'tools',l:[]}; items.push(tools); } const m=l.t.replace(/^⏺ /,'').match(/^(\w+)\((.*)\)$/)||[0,l.t,'']; tools.l.push({n:m[1],a:m[2],r:''}); }
+    else if(l.c==='out'&&tools&&tools.l.length){ tools.l[tools.l.length-1].r=l.t.replace(/^\s*⎿\s*/,''); }
+    else if(l.c==='dotw'){ tools=null; items.push({k:'c',t:l.t}); } });
+  if(f.id==='deps') items.push({k:'c',t:'Resumo do que mudou:\n\n| Pacote | Antes | Depois |\n|---|---|---|\n| jest | 29.7 | 30.0 |\n| typescript | 5.4 | 5.9 |\n\n- `npm test`: 14 passando\n- nada commitado ainda\n\nQuer que eu abra o MR?'});
+  let h=items.map((it,i)=>it.k==='u'?`<div class="msg-u">${esc(it.t)}</div>`
+    :it.k==='c'?`<div class="msg-c">${mdLite(it.t)}</div>`
+    :`<div class="tools"><button data-tg="${i}">▸ <b>${it.l.length} ${it.l.length>1?'ações':'ação'}</b> <span>${esc(it.l.map(x=>x.n).filter((v,j,a)=>a.indexOf(v)===j).join(' · '))}</span></button>${REMOTE.open&&REMOTE.open[f.id+i]?`<ul>${it.l.map(x=>`<li>${esc(x.n)} ${esc(x.a)}${x.r?`<span>${esc(x.r)}</span>`:''}</li>`).join('')}</ul>`:''}</div>`).join('');
+  if(f.st==='working') h+=`<div class="typing">◐ ${esc(f.verb||'Trabalhando')}…</div>`;
+  if(f.st==='blocked'&&f.planned) h+=`<div class="ask"><span class="h">Plano pronto</span><span class="why">O Claude terminou o plano e quer começar a escrever.</span><div class="opts"><button class="pri" data-pa="1">Sim, e aceitar edições</button><button data-pa="2">Não, continuar planejando</button></div></div>`;
+  else if(f.st==='blocked') h+=`<div class="ask"><span class="h">O Claude quer rodar um comando</span><code>${esc(f.ask||'')}</code><span class="why">Roda os testes do client do Slack</span><div class="opts"><button class="pri" data-pa="1">Sim</button><button data-pa="2">Sim, e não perguntar de novo para <span class="mono">npm test</span></button><button data-pa="3">Não, e dizer o que fazer</button></div></div>`;
+  return h; }
 function phoneDlg(ph){
   OV={type:'phone'}; if(ph) REMOTE.ph=ph; REMOTE.last=Date.now();
   const order={blocked:0,done:1,working:2,idle:3};
@@ -2879,12 +2928,16 @@ function phoneDlg(ph){
     body=`<div class="ph-empty"><b>Leia o QR no Maestro</b><span>Este celular não está pareado, ou o acesso foi desligado ou pareado em outro aparelho.</span><span class="mono" style="font-size:12px">Paleta → Celular: ligar acesso remoto</span></div>`;
   } else if(REMOTE.ph==='feat'){
     const f=FEATS.find(x=>x.id===REMOTE.fid)||fs[0];
-    const lines=f.term.filter(l=>typeof l==='object'&&l.t).slice(-60).map(l=>`<span class="${l.c==='u'?'u':l.c==='out'||l.c==='dim'?'out':''}">${esc(l.t)}</span>`).join('\n');
-    const perm=f.st==='blocked'?`\n\n<span class="q">Bash command\n  ${esc(f.ask||'')}\nDo you want to proceed?\n❯ 1. Yes\n  2. Yes, and don't ask again\n  3. No, and tell Claude what to do differently (esc)</span>`:'';
-    top=`<button class="back" id="phB" aria-label="Voltar">‹</button><span style="min-width:0"><b class="mono" style="font-size:14px">${esc(f.branch)}</b><br><span class="g ${f.st}" style="font-size:12px">${ST[f.st].g} ${ST[f.st].l}</span></span>`;
-    body=`<pre class="ph-pane" id="phP">${lines}${perm}</pre>`;
-    foot=`<div class="ph-keys">${[['1','Sim'],['2','Sempre'],['3','Não'],['⏎','Enter'],['Esc','']].map(([k,l])=>`<button data-phk="${k}">${k}${l?`<small>${l}</small>`:''}</button>`).join('')}</div>
-      ${REMOTE.sent?'<div class="ph-ok">enviado</div>':''}<div class="ph-in"><textarea id="phT" placeholder="Prompt para o Claude desta feature…" aria-label="Prompt"></textarea><button class="btn pri" id="phS">Enviar</button></div>`;
+    top=`<button class="back" id="phB" aria-label="Voltar">‹</button><span style="min-width:0;flex:1"><b class="mono" style="font-size:14px">${esc(f.branch)}</b><br><span class="g ${f.st}" style="font-size:12px">${ST[f.st].g} ${ST[f.st].l}</span></span><button class="pill" id="phTerm">${REMOTE.raw?'Conversa':'Terminal'}</button>`;
+    if(REMOTE.raw){
+      const lines=f.term.filter(l=>typeof l==='object'&&l.t).slice(-60).map(l=>`<span class="${l.c==='u'?'u':l.c==='out'||l.c==='dim'?'out':''}">${esc(l.t)}</span>`).join('\n');
+      body=`<pre class="ph-pane" id="phP">${lines}</pre>`;
+      foot=`<div class="ph-keys">${[['1','Sim'],['2','Sempre'],['3','Não'],['⏎','Enter'],['Esc','']].map(([k,l])=>`<button data-phk="${k}">${k}${l?`<small>${l}</small>`:''}</button>`).join('')}</div>`;
+    } else {
+      body=`<div class="chat" id="phP">${chatHtml(f)}</div>`;
+      foot=f.st==='blocked'&&!f.planned?'':`${REMOTE.sent?'<div class="ph-ok">enviado</div>':''}`;
+    }
+    foot+=`<div class="ph-in"><textarea id="phT" placeholder="Mensagem para o Claude…" aria-label="Prompt" rows="1"></textarea><button class="send" id="phS" aria-label="Enviar">↑</button></div>`;
   } else {
     const att=fs.filter(f=>f.st==='blocked'), rest=fs.filter(f=>f.st!=='blocked').sort((a,b)=>order[a.st]-order[b.st]);
     top=`<b>Maestro</b><span class="sp"></span><span class="muted" style="font-size:12px">${att.length?`<span style="color:var(--orange)">! ${att.length}</span> · `:''}${fs.filter(f=>f.st==='working').length} trabalhando</span>`;
@@ -2896,7 +2949,10 @@ function phoneDlg(ph){
   $('#phX').onclick=e=>{ if(e.target.id==='phX') closePhone(); }; $('#phC').onclick=closePhone;
   document.querySelectorAll('[data-pht]').forEach(b=>b.onclick=()=>{ REMOTE.sent=false; if(b.dataset.pht==='feat'&&!REMOTE.fid) REMOTE.fid=(fs.find(f=>f.st==='blocked')||fs[0]).id; phoneDlg(b.dataset.pht); });
   document.querySelectorAll('[data-phf]').forEach(b=>b.onclick=()=>{ REMOTE.fid=b.dataset.phf; REMOTE.sent=false; phoneDlg('feat'); });
-  const bk=$('#phB'); if(bk) bk.onclick=()=>phoneDlg('list');
+  const bk=$('#phB'); if(bk) bk.onclick=()=>{ REMOTE.raw=false; phoneDlg('list'); };
+  const tm=$('#phTerm'); if(tm) tm.onclick=()=>{ REMOTE.raw=!REMOTE.raw; phoneDlg(); };
+  document.querySelectorAll('[data-tg]').forEach(b=>b.onclick=()=>{ REMOTE.open=REMOTE.open||{}; const k=REMOTE.fid+b.dataset.tg; REMOTE.open[k]=!REMOTE.open[k]; phoneDlg(); });
+  document.querySelectorAll('[data-pa]').forEach(b=>b.onclick=()=>{ const f=FEATS.find(x=>x.id===REMOTE.fid), o=+b.dataset.pa; if(f.planned){ toast(o===1?'Plano aprovado pelo celular':'Claude continua planejando'); } else answer(f,o===1?2:o===2?1:3); phoneDlg(); });
   document.querySelectorAll('[data-phk]').forEach(b=>b.onclick=()=>{ const f=FEATS.find(x=>x.id===REMOTE.fid), k=b.dataset.phk; if(f&&f.st==='blocked'&&!f.planned&&['1','2','3','Esc'].includes(k)) answer(f,k==='1'?2:k==='2'?1:3); phoneDlg(); });
   const sb=$('#phS'); if(sb) sb.onclick=()=>{ const t=$('#phT').value.trim(); if(!t) return; const f=FEATS.find(x=>x.id===REMOTE.fid); ask(f,t); REMOTE.sent=true; phoneDlg(); };
   clearTimeout(REMOTE.poll); REMOTE.poll=setTimeout(()=>{ if(OV&&OV.type==='phone'&&document.activeElement?.id!=='phT') phoneDlg(); else if(OV&&OV.type==='phone') REMOTE.poll=setTimeout(()=>phoneDlg(),1500); },1500); }
