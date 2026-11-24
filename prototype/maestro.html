@@ -328,6 +328,67 @@ body.resizing{cursor:col-resize;user-select:none}
 .dlg .row2{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:10px}
 .dlg .prev{font:12px var(--mono);color:var(--muted);background:var(--win);border-radius:5px;padding:6px 8px;white-space:normal;overflow-wrap:anywhere}
 .dlg .err{color:var(--bad);font-size:12px}
+/* acesso remoto (celular): extensão do protótipo, mesmos tokens */
+.qrw{display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:center}
+.qr{width:168px;height:168px;background:#fff;border-radius:6px;padding:8px}
+.qr svg{display:block;width:100%;height:100%}
+.qrw .url{font:12px var(--mono);color:var(--fg);overflow-wrap:anywhere}
+.qrw .meta{font-size:12px;color:var(--muted);display:grid;gap:4px}
+.dlg .warn{font-size:12px;color:var(--orange);border-left:2px solid var(--orange);padding-left:8px}
+.pal li.off{opacity:.45}
+.status .rem{color:var(--cyan)}
+.phw{display:grid;gap:10px;justify-items:center;max-height:100%}
+.phone{width:390px;height:min(844px,calc(100vh - 140px));max-width:100%;background:var(--win);border:1px solid var(--line);border-radius:28px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;font-size:15px}
+.phone .ph-top{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--line);background:var(--panel)}
+.phone .ph-top b{font-weight:600}
+.phone .ph-top .sp{flex:1}
+.phone .ph-top .back{font-size:22px;line-height:1;color:var(--accent);padding:0 6px 0 0}
+.phone .ph-body{flex:1;overflow:auto;min-height:0}
+.phone .ph-sec{font:11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:12px 16px 4px}
+.phone .ph-row{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:2px 8px;padding:12px 16px;border-bottom:1px solid var(--line);text-align:left;width:100%}
+.phone .ph-row .g{font-family:var(--mono);grid-row:span 2}
+.phone .ph-row .b{font-family:var(--mono);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.phone .ph-row .m{grid-column:2;color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.phone .ph-row .a{color:var(--comment);font-size:12px}
+.phone .ph-row.att{background:rgba(255,184,108,.08)}
+.phone .g.blocked{color:var(--orange)} .phone .g.working{color:var(--cyan)} .phone .g.done{color:var(--ok)} .phone .g.idle{color:var(--comment)}
+.phone .ph-pane{font:12px/1.45 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;padding:10px 12px;margin:0;color:var(--fg)}
+.phone .ph-pane .out,.phone .ph-pane .dim{color:var(--comment)} .phone .ph-pane .u{color:var(--muted)} .phone .ph-pane .q{color:var(--orange)}
+.phone .ph-keys{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:8px 12px;border-top:1px solid var(--line);background:var(--panel)}
+.phone .ph-keys button{border:1px solid var(--line);background:var(--raise);border-radius:8px;padding:10px 0;font:13px var(--sans);display:grid;justify-items:center;gap:0}
+.phone .ph-keys button small{color:var(--muted);font-size:11px}
+.phone .ph-in{display:flex;gap:8px;padding:8px 12px calc(12px + env(safe-area-inset-bottom,0px));background:var(--panel)}
+.phone .ph-in textarea{flex:1;min-height:42px;max-height:120px;resize:none;background:var(--win);border:1px solid var(--line);border-radius:8px;color:var(--fg);font:14px var(--sans);padding:10px}
+.phone .ph-in .btn{border-radius:8px;padding:0 14px}
+.phone .ph-ok{color:var(--ok);font-size:12px;padding:0 12px 4px;background:var(--panel)}
+.phone .ph-empty{padding:48px 24px;display:grid;gap:12px;text-align:center;color:var(--muted)}
+.phone .ph-empty b{color:var(--fg);font-size:17px}
+.phw .tabs{display:flex;gap:6px}
+.phone .chat{display:flex;flex-direction:column;gap:10px;padding:12px 12px 16px}
+.phone .msg-u{align-self:flex-end;max-width:85%;background:var(--accent-soft);border:1px solid rgba(189,147,249,.35);border-radius:14px 14px 4px 14px;padding:8px 12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.phone .msg-c{max-width:100%;line-height:1.5;overflow-wrap:anywhere}
+.phone .msg-c p{margin:0 0 8px}.phone .msg-c p:last-child{margin:0}
+.phone .msg-c code{font:13px var(--mono);background:var(--raise);border-radius:4px;padding:0 4px}
+.phone .msg-c ul,.phone .msg-c ol{margin:0 0 8px;padding-left:20px}
+.phone .msg-c .tbl{display:grid;gap:6px;margin:0 0 8px}
+.phone .msg-c .tbl div{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:14px}
+.phone .msg-c .tbl small{display:block;color:var(--muted);font:12px var(--mono)}
+.phone .tools{align-self:flex-start;max-width:100%;border:1px solid var(--line);border-radius:10px;background:var(--panel);font-size:13px;overflow:hidden}
+.phone .tools>button{display:flex;gap:8px;align-items:center;padding:7px 10px;width:100%;text-align:left;color:var(--muted)}
+.phone .tools>button b{color:var(--fg);font-weight:500}
+.phone .tools ul{list-style:none;margin:0;padding:0 10px 8px;font:12px/1.5 var(--mono);color:var(--muted)}
+.phone .tools li span{color:var(--comment);display:block;padding-left:14px}
+.phone .typing{align-self:flex-start;color:var(--cyan);font-size:13px}
+.phone .ask{border:1px solid var(--orange);border-radius:12px;padding:12px;display:grid;gap:8px;background:rgba(255,184,108,.06)}
+.phone .ask .h{color:var(--orange);font-weight:600;font-size:13px}
+.phone .ask code{font:13px var(--mono);background:var(--win);border-radius:6px;padding:6px 8px;display:block;overflow-wrap:anywhere}
+.phone .ask .why{color:var(--muted);font-size:13px}
+.phone .ask .opts{display:grid;gap:6px}
+.phone .ask .opts button{border:1px solid var(--line);background:var(--raise);border-radius:10px;padding:11px;font-size:15px;text-align:left}
+.phone .ask .opts button.pri{background:var(--accent);border-color:var(--accent);color:#282a36;font-weight:500}
+.phone .ph-top .pill{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 10px;color:var(--muted)}
+.phone .ph-in .send{width:42px;height:42px;border-radius:50%;background:var(--accent);color:#282a36;font-size:18px;flex:none}
+.phone .ph-in .more{width:42px;height:42px;border-radius:50%;border:1px solid var(--line);color:var(--muted);flex:none}
 label{display:flex;gap:8px;align-items:baseline;cursor:pointer}
 label.off{opacity:.5;cursor:default}
 .help{width:780px;max-width:100%;max-height:calc(100% - 20px);overflow:auto;background:var(--raise);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:18px 20px;display:grid;gap:14px}
@@ -2788,11 +2849,12 @@ function lspStatus(){ if(/\.py$/.test(S.file)) return '<span class="muted" title
 function renderStatus(){
   const f=feat(); const att=FEATS.filter(x=>x.st==='blocked'), work=FEATS.filter(x=>x.st==='working').length;
   const dr=S.drafts.filter(d=>d.state==='draft').length;
-  $('#status').innerHTML=`<span>herdr: conectado</span>${att.length?`<button class="att" id="stAtt">! ${att.length} precisa${att.length>1?'m':''} de você</button>`:''}<span>${work} trabalhando</span>${DBS.some(d=>d.st!=='off')?`<button id="stDb" title="Bancos (Alt+6)"><span style="color:${DBS.some(d=>d.st==='down')?'var(--bad)':'var(--ok)'}">●</span> ${DBS.filter(d=>d.st==='up').length} banco${DBS.filter(d=>d.st==='up').length!==1?'s':''}${DBS.some(d=>d.st==='down')?' · 1 caiu':''}</button>`:''}<span title="soma das features">hoje: US$ ${FEATS.reduce((a,x)=>a+(x.cost||0),0).toFixed(2).replace('.',',')}</span>
+  $('#status').innerHTML=`<span>herdr: conectado</span>${att.length?`<button class="att" id="stAtt">! ${att.length} precisa${att.length>1?'m':''} de você</button>`:''}<span>${work} trabalhando</span>${DBS.some(d=>d.st!=='off')?`<button id="stDb" title="Bancos (Alt+6)"><span style="color:${DBS.some(d=>d.st==='down')?'var(--bad)':'var(--ok)'}">●</span> ${DBS.filter(d=>d.st==='up').length} banco${DBS.filter(d=>d.st==='up').length!==1?'s':''}${DBS.some(d=>d.st==='down')?' · 1 caiu':''}</button>`:''}${REMOTE.on?`<button class="rem" id="stRem" title="Acesso remoto ligado. Clique para o QR ou para desligar.">📱 remoto · ${remFmt(remLeft())}</button>`:''}<span title="soma das features">hoje: US$ ${FEATS.reduce((a,x)=>a+(x.cost||0),0).toFixed(2).replace('.',',')}</span>
     ${S.mode==='feat'&&f?`<span>⎇ ${f.branch}</span>`:''}${dr?`<span class="drafts">${dr} comentário${dr>1?'s':''} pendente${dr>1?'s':''}</span>`:''}${RV&&RV.phase==='run'?'<span>Claude: revisando MR</span>':''}${AU.phase==='run'?`<span>auditoria: US$ ${AU.spent.toFixed(2).replace('.',',')}</span>`:''}
     <span class="sp"></span>${S.mode==='feat'&&S.right&&S.rtab==='file'&&S.file?lspStatus():''}${S.mode==='feat'&&S.right&&S.rtab==='file'?`<span>Ln ${S.ln}, Col ${S.col}</span>`:''}<span title="lido de ~/.config/ghostty/config">ghostty: Dracula · JetBrains Mono 13</span>`;
   const a=$('#stAtt'); if(a) a.onclick=()=>selectFeat(att[0].id);
   const sd=$('#stDb'); if(sd) sd.onclick=()=>setMode('db');
+  const sr=$('#stRem'); if(sr) sr.onclick=remoteDlg;
   const pb=$('#stProb'); if(pb) pb.onclick=()=>{ S.rtab='prob'; renderRight(); };
 }
 
@@ -2804,6 +2866,97 @@ function confirmDlg(title,text,okLabel,ok,danger){
   $('#overlay').innerHTML=`<div class="scrim"><div class="dlg" role="alertdialog" aria-label="${esc(title)}"><h3>${esc(title)}</h3><p>${esc(text)}</p><div class="acts"><button class="btn" id="dNo">Cancelar</button><button class="btn ${danger?'danger':'pri'}" id="dOk">${esc(okLabel)}</button></div></div></div>`;
   $('#dNo').onclick=closeOverlay; $('#dOk').onclick=OV.ok; (danger?$('#dNo'):$('#dOk')).focus();
 }
+/* ---------- acesso remoto (celular) · extensão do protótipo ---------- */
+const REMOTE={on:false,t0:0,last:0,noNgrok:false,url:'https://3f9c-189-6-21-77.ngrok-free.app',ph:'list',fid:null,sent:false,timer:null};
+const IDLE_MIN=120, TTL_MIN=480;
+function remLeft(){ const n=Date.now(); return Math.max(0,Math.min(IDLE_MIN*60e3-(n-REMOTE.last),TTL_MIN*60e3-(n-REMOTE.t0))); }
+function remFmt(ms){ const m=Math.ceil(ms/60e3); return m>=60?`${Math.floor(m/60)} h ${String(m%60).padStart(2,'0')}`:`${m} min`; }
+function qrSvg(seed){ const n=29; let r=seed, h='';
+  const rnd=()=>((r=(r*1103515245+12345)&0x7fffffff)>>16)&1;
+  const fin=(x,y)=>{ for(const [a,b] of [[x,y],[x+n-7,y],[x,y+n-7]]) h+=`<path d="M${a} ${b}h7v7h-7z M${a+1} ${b+1}v5h5v-5z M${a+2} ${b+2}h3v3h-3z" fill-rule="evenodd"/>`; };
+  const inF=(x,y)=>(x<8&&y<8)||(x>n-9&&y<8)||(x<8&&y>n-9);
+  for(let y=0;y<n;y++) for(let x=0;x<n;x++) if(!inF(x,y)&&rnd()) h+=`<rect x="${x}" y="${y}" width="1" height="1"/>`;
+  fin(0,0); return `<svg viewBox="-1 -1 ${n+2} ${n+2}" shape-rendering="crispEdges" fill="#000" aria-label="QR code de pareamento">${h}</svg>`; }
+function remoteOn(){
+  if(REMOTE.noNgrok){ toast('ngrok não encontrado no PATH'); return; }
+  REMOTE.on=true; REMOTE.t0=REMOTE.last=Date.now(); REMOTE.seed=(Date.now()%9973)+1;
+  clearInterval(REMOTE.timer); REMOTE.timer=setInterval(renderStatus,30e3); renderStatus(); remoteDlg(); }
+function remoteOff(why){ REMOTE.on=false; clearInterval(REMOTE.timer); if(OV&&OV.type==='remote') closeOverlay(); renderStatus(); toast(why||'Acesso remoto desligado. O link do celular parou de responder.'); }
+function remoteDlg(){
+  if(!REMOTE.on){ remoteOn(); return; }
+  OV={type:'remote'};
+  $('#overlay').innerHTML=`<div class="scrim" id="rS"><div class="dlg" role="dialog" aria-label="Acesso remoto"><h3>Acesso remoto (celular)</h3>
+    <div class="qrw"><div class="qr">${qrSvg(REMOTE.seed)}</div><div class="meta"><span>Leia com a câmera do celular. O link pareia um aparelho só.</span><span class="url">${REMOTE.url}</span><span>desliga em ${remFmt(remLeft())} sem uso · no máximo 8 h</span></div></div>
+    <p class="warn">Quem estiver com este celular manda prompts aos seus Claudes, e prompt vira comando nesta máquina. O ngrok vê o tráfego.</p>
+    <div class="acts"><button class="btn" id="rRe">Parear de novo</button><button class="btn" id="rPh">Ver como fica no celular</button><span class="sp" style="flex:1"></span><button class="btn danger" id="rOff">Desligar</button><button class="btn" id="rX">Fechar <kbd>Esc</kbd></button></div></div></div>`;
+  $('#rS').onclick=e=>{ if(e.target.id==='rS') closeOverlay(); };
+  $('#rX').onclick=closeOverlay; $('#rOff').onclick=()=>remoteOff();
+  $('#rRe').onclick=()=>{ REMOTE.seed++; remoteDlg(); toast('QR novo. O aparelho pareado antes foi desconectado.'); };
+  $('#rPh').onclick=()=>phoneDlg('list'); $('#rX').focus(); }
+/* o celular monta a conversa do transcript do Claude (~/.claude/projects/…jsonl), não do terminal */
+function mdLite(t){ const lines=t.replace(/^⏺ /,'').split('\n'); let h='', list=null, tbl=[];
+  const inline=x=>esc(x).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+  const flush=()=>{ if(list){ h+=`<${list.t}>${list.i.map(i=>`<li>${inline(i)}</li>`).join('')}</${list.t}>`; list=null; } if(tbl.length){ const [hd,...rows]=tbl; h+=`<div class="tbl">${rows.map(r=>`<div>${inline(r[0])}${r.slice(1).map((c,i)=>`<small>${esc(hd[i+1]||'')}: ${esc(c)}</small>`).join('')}</div>`).join('')}</div>`; tbl=[]; } };
+  lines.forEach(l=>{ let m;
+    if(/^\|/.test(l)){ if(!/^\|[\s|:-]+\|$/.test(l)) tbl.push(l.split('|').slice(1,-1).map(c=>c.trim())); return; }
+    if((m=l.match(/^\s*[-*] (.*)/))){ if(!list||list.t!=='ul'){ flush(); list={t:'ul',i:[]}; } list.i.push(m[1]); return; }
+    if((m=l.match(/^\s*\d+\. (.*)/))){ if(!list||list.t!=='ol'){ flush(); list={t:'ol',i:[]}; } list.i.push(m[1]); return; }
+    flush(); if(l.trim()) h+=`<p>${inline(l)}</p>`; });
+  flush(); return h; }
+function chatHtml(f){ const items=[]; let tools=null;
+  const term=f.term.filter(l=>typeof l==='object'&&l.t&&l.c!=='dim'&&l.c!=='hd');
+  term.forEach(l=>{ if(l.c==='u'){ tools=null; items.push({k:'u',t:l.t.replace(/^> /,'')}); }
+    else if(l.c==='dot'){ if(!tools){ tools={k:'tools',l:[]}; items.push(tools); } const m=l.t.replace(/^⏺ /,'').match(/^(\w+)\((.*)\)$/)||[0,l.t,'']; tools.l.push({n:m[1],a:m[2],r:''}); }
+    else if(l.c==='out'&&tools&&tools.l.length){ tools.l[tools.l.length-1].r=l.t.replace(/^\s*⎿\s*/,''); }
+    else if(l.c==='dotw'){ tools=null; items.push({k:'c',t:l.t}); } });
+  if(f.id==='deps') items.push({k:'c',t:'Resumo do que mudou:\n\n| Pacote | Antes | Depois |\n|---|---|---|\n| jest | 29.7 | 30.0 |\n| typescript | 5.4 | 5.9 |\n\n- `npm test`: 14 passando\n- nada commitado ainda\n\nQuer que eu abra o MR?'});
+  let h=items.map((it,i)=>it.k==='u'?`<div class="msg-u">${esc(it.t)}</div>`
+    :it.k==='c'?`<div class="msg-c">${mdLite(it.t)}</div>`
+    :`<div class="tools"><button data-tg="${i}">▸ <b>${it.l.length} ${it.l.length>1?'ações':'ação'}</b> <span>${esc(it.l.map(x=>x.n).filter((v,j,a)=>a.indexOf(v)===j).join(' · '))}</span></button>${REMOTE.open&&REMOTE.open[f.id+i]?`<ul>${it.l.map(x=>`<li>${esc(x.n)} ${esc(x.a)}${x.r?`<span>${esc(x.r)}</span>`:''}</li>`).join('')}</ul>`:''}</div>`).join('');
+  if(f.st==='working') h+=`<div class="typing">◐ ${esc(f.verb||'Trabalhando')}…</div>`;
+  if(f.st==='blocked'&&f.planned) h+=`<div class="ask"><span class="h">Plano pronto</span><span class="why">O Claude terminou o plano e quer começar a escrever.</span><div class="opts"><button class="pri" data-pa="1">Sim, e aceitar edições</button><button data-pa="2">Não, continuar planejando</button></div></div>`;
+  else if(f.st==='blocked') h+=`<div class="ask"><span class="h">O Claude quer rodar um comando</span><code>${esc(f.ask||'')}</code><span class="why">Roda os testes do client do Slack</span><div class="opts"><button class="pri" data-pa="1">Sim</button><button data-pa="2">Sim, e não perguntar de novo para <span class="mono">npm test</span></button><button data-pa="3">Não, e dizer o que fazer</button></div></div>`;
+  return h; }
+function phoneDlg(ph){
+  OV={type:'phone'}; if(ph) REMOTE.ph=ph; REMOTE.last=Date.now();
+  const order={blocked:0,done:1,working:2,idle:3};
+  const fs=FEATS.filter(f=>f.kind!=='ws');
+  const row=f=>`<button class="ph-row ${f.st==='blocked'?'att':''}" data-phf="${f.id}"><span class="g ${f.st}">${ST[f.st].g}</span><span class="b">${esc(f.branch)}</span><span class="a">${esc(f.ago||'')}</span><span class="m">${ST[f.st].l} · ${esc(f.msg||'')}</span></button>`;
+  let top='', body='', foot='';
+  if(REMOTE.ph==='401'){
+    top=`<b>Maestro</b>`;
+    body=`<div class="ph-empty"><b>Leia o QR no Maestro</b><span>Este celular não está pareado, ou o acesso foi desligado ou pareado em outro aparelho.</span><span class="mono" style="font-size:12px">Paleta → Celular: ligar acesso remoto</span></div>`;
+  } else if(REMOTE.ph==='feat'){
+    const f=FEATS.find(x=>x.id===REMOTE.fid)||fs[0];
+    top=`<button class="back" id="phB" aria-label="Voltar">‹</button><span style="min-width:0;flex:1"><b class="mono" style="font-size:14px">${esc(f.branch)}</b><br><span class="g ${f.st}" style="font-size:12px">${ST[f.st].g} ${ST[f.st].l}</span></span><button class="pill" id="phTerm">${REMOTE.raw?'Conversa':'Terminal'}</button>`;
+    if(REMOTE.raw){
+      const lines=f.term.filter(l=>typeof l==='object'&&l.t).slice(-60).map(l=>`<span class="${l.c==='u'?'u':l.c==='out'||l.c==='dim'?'out':''}">${esc(l.t)}</span>`).join('\n');
+      body=`<pre class="ph-pane" id="phP">${lines}</pre>`;
+      foot=`<div class="ph-keys">${[['1','Sim'],['2','Sempre'],['3','Não'],['⏎','Enter'],['Esc','']].map(([k,l])=>`<button data-phk="${k}">${k}${l?`<small>${l}</small>`:''}</button>`).join('')}</div>`;
+    } else {
+      body=`<div class="chat" id="phP">${chatHtml(f)}</div>`;
+      foot=f.st==='blocked'&&!f.planned?'':`${REMOTE.sent?'<div class="ph-ok">enviado</div>':''}`;
+    }
+    foot+=`<div class="ph-in"><textarea id="phT" placeholder="Mensagem para o Claude…" aria-label="Prompt" rows="1"></textarea><button class="send" id="phS" aria-label="Enviar">↑</button></div>`;
+  } else {
+    const att=fs.filter(f=>f.st==='blocked'), rest=fs.filter(f=>f.st!=='blocked').sort((a,b)=>order[a.st]-order[b.st]);
+    top=`<b>Maestro</b><span class="sp"></span><span class="muted" style="font-size:12px">${att.length?`<span style="color:var(--orange)">! ${att.length}</span> · `:''}${fs.filter(f=>f.st==='working').length} trabalhando</span>`;
+    body=(att.length?`<div class="ph-sec">Precisa de você</div>${att.map(row).join('')}`:'')+`<div class="ph-sec">Features</div>${rest.map(row).join('')}`;
+  }
+  $('#overlay').innerHTML=`<div class="scrim" id="phX" style="padding:16px"><div class="phw"><div class="tabs"><button class="btn" data-pht="list">Lista</button><button class="btn" data-pht="feat">Feature</button><button class="btn" data-pht="401">Sem sessão</button><button class="btn" id="phC">Fechar <kbd>Esc</kbd></button></div>
+    <div class="phone" role="dialog" aria-label="Painel do celular"><div class="ph-top">${top}</div><div class="ph-body">${body}</div>${foot}</div></div></div>`;
+  const pp=$('#phP'); if(pp) pp.parentElement.scrollTop=pp.scrollHeight;
+  $('#phX').onclick=e=>{ if(e.target.id==='phX') closePhone(); }; $('#phC').onclick=closePhone;
+  document.querySelectorAll('[data-pht]').forEach(b=>b.onclick=()=>{ REMOTE.sent=false; if(b.dataset.pht==='feat'&&!REMOTE.fid) REMOTE.fid=(fs.find(f=>f.st==='blocked')||fs[0]).id; phoneDlg(b.dataset.pht); });
+  document.querySelectorAll('[data-phf]').forEach(b=>b.onclick=()=>{ REMOTE.fid=b.dataset.phf; REMOTE.sent=false; phoneDlg('feat'); });
+  const bk=$('#phB'); if(bk) bk.onclick=()=>{ REMOTE.raw=false; phoneDlg('list'); };
+  const tm=$('#phTerm'); if(tm) tm.onclick=()=>{ REMOTE.raw=!REMOTE.raw; phoneDlg(); };
+  document.querySelectorAll('[data-tg]').forEach(b=>b.onclick=()=>{ REMOTE.open=REMOTE.open||{}; const k=REMOTE.fid+b.dataset.tg; REMOTE.open[k]=!REMOTE.open[k]; phoneDlg(); });
+  document.querySelectorAll('[data-pa]').forEach(b=>b.onclick=()=>{ const f=FEATS.find(x=>x.id===REMOTE.fid), o=+b.dataset.pa; if(f.planned){ toast(o===1?'Plano aprovado pelo celular':'Claude continua planejando'); } else answer(f,o===1?2:o===2?1:3); phoneDlg(); });
+  document.querySelectorAll('[data-phk]').forEach(b=>b.onclick=()=>{ const f=FEATS.find(x=>x.id===REMOTE.fid), k=b.dataset.phk; if(f&&f.st==='blocked'&&!f.planned&&['1','2','3','Esc'].includes(k)) answer(f,k==='1'?2:k==='2'?1:3); phoneDlg(); });
+  const sb=$('#phS'); if(sb) sb.onclick=()=>{ const t=$('#phT').value.trim(); if(!t) return; const f=FEATS.find(x=>x.id===REMOTE.fid); ask(f,t); REMOTE.sent=true; phoneDlg(); };
+  clearTimeout(REMOTE.poll); REMOTE.poll=setTimeout(()=>{ if(OV&&OV.type==='phone'&&document.activeElement?.id!=='phT') phoneDlg(); else if(OV&&OV.type==='phone') REMOTE.poll=setTimeout(()=>phoneDlg(),1500); },1500); }
+function closePhone(){ clearTimeout(REMOTE.poll); closeOverlay(); }
 const CMDS=[
   ['Fila: Ir para o próximo item','Ctrl+Shift+Espaço',nextAttention],
   ['Trabalho: Nova aba (este repo ou outro)…','Alt+T',()=>openPal('repo')],
@@ -2860,6 +3013,11 @@ const CMDS=[
   ['Simular: PRCs falha na carga','',()=>{ setMode('prc'); prcRefresh(true); }],
   ['News: Resumo do dia','',openBrief],
   ['News: Simular sem token / com token','',()=>{ S.newsToken=!S.newsToken; if(!S.newsToken) closeBrief(); render(); toast(S.newsToken?'Token do daily.dev encontrado':'Sem ~/.config/maestro/dailydev.token'); }],
+  ['Celular: ligar acesso remoto','',remoteOn,()=>REMOTE.on?null:REMOTE.noNgrok?'ngrok não encontrado no PATH':''],
+  ['Celular: mostrar QR de pareamento','',remoteDlg,()=>REMOTE.on?'':null],
+  ['Celular: desligar acesso remoto','',()=>remoteOff(),()=>REMOTE.on?'':null],
+  ['Simular: sem ngrok no PATH / com ngrok','',()=>{ REMOTE.noNgrok=!REMOTE.noNgrok; if(REMOTE.noNgrok&&REMOTE.on) remoteOff(); toast(REMOTE.noNgrok?'ngrok fora do PATH':'ngrok no PATH'); }],
+  ['Simular: acesso remoto desliga por inatividade','',()=>{ if(!REMOTE.on){ toast('Ligue o acesso remoto antes'); return; } remoteOff('Acesso remoto desligado por inatividade'); }],
   ['Simular: feature de fundo pede permissão','',()=>{ const f=FEATS.find(x=>x.id!==S.fid&&x.id!=='main'&&x.kind!=='ws'&&x.st!=='blocked'&&x.st!=='working')||FEATS.find(x=>x.id!==S.fid&&x.kind!=='ws'&&x.st!=='blocked'); if(!f){ toast('Todas as outras já estão esperando você'); return; } f.ask='npm run migrate'; f.tab=0; f.term.push({c:'dotw',t:'⏺ Preciso rodar a migration.'}); setSt(f,'blocked','pediu permissão: npm run migrate'); }],
 ];
 let PAL={mode:'cmd',q:'',i:0,items:[]};
@@ -2873,7 +3031,7 @@ function palItems(){ const q=PAL.q.trim();
   const dbs=DBS.map((d,i)=>({t:`Banco: ${d.st==='up'?'desligar':'ligar'} ${d.n} :${d.port}`,g:'',run:()=>toggleDb(i),s:q?fuzzy(q,'banco '+d.n):-1})).filter(x=>x.s>=0)
     .concat([{t:'Banco: ligar todos',g:'',run:startAllDb,s:q?fuzzy(q,'banco ligar todos'):-1}]).concat(DBS.some(d=>d.st==='up')?[{t:'Banco: desligar todos',g:'',run:()=>{ DBS.forEach(d=>{ if(d.st==='up') d.st='off'; }); toast('Bancos desligados'); render(); },s:q?fuzzy(q,'banco desligar todos'):-1}]:[]).filter(x=>x.s>=0);
   const feats=FEATS.map((f,i)=>({t:`Feature: ${f.branch}`,g:`Ctrl+Shift+${i+1}`,run:()=>selectFeat(f.id),s:q?fuzzy(q,'feature '+f.branch):-1})).filter(x=>x.s>=0);
-  return CMDS.map(([t,k,run])=>({t,g:k,run,s:q?fuzzy(q,t):0})).filter(x=>x.s>=0).concat(feats,dbs).sort((a,b)=>b.s-a.s); }
+  return CMDS.map(([t,k,run,av])=>{ const why=av?av():''; return why===null?null:{t,g:why||k,off:!!why,run:why?()=>toast(why):run,s:q?fuzzy(q,t):0}; }).filter(x=>x&&x.s>=0).concat(feats,dbs).sort((a,b)=>b.s-a.s); }
 function openPal(mode,q0){
   OV={type:'pal'}; PAL={mode,q:q0||'',i:0};
   const ph=mode==='db'?'Banco… (Enter liga ou desliga · os aliases sql_* do zsh)':mode==='repo'?'Nova aba em… (Enter = mesmo repo, ou digite outro)':mode==='file'?'Nome do arquivo…':mode==='att'?'Fila de atenção: filtrar…':'Comando ou nome da feature…';
@@ -2882,7 +3040,7 @@ function openPal(mode,q0){
   const i=$('#pIn'); i.value=PAL.q; i.oninput=()=>{ PAL.q=i.value; PAL.i=0; paintPal(); }; i.focus(); paintPal();
 }
 function paintPal(){ PAL.items=palItems(); const ul=$('#pL');
-  ul.innerHTML=PAL.items.length?PAL.items.map((x,i)=>`<li class="${i===PAL.i?'on':''}" data-i="${i}" role="option">${x.tag?`<span class="pr pr${x.p}">${x.tag}</span>`:''}<span>${esc(x.t)}</span><span class="sp"></span>${x.g?`<kbd>${x.g}</kbd>`:''}</li>`).join(''):(PAL.mode==='att'?'<div class="none">Fila vazia. Nada esperando você.</div>':'<div class="none">Nada encontrado</div>');
+  ul.innerHTML=PAL.items.length?PAL.items.map((x,i)=>`<li class="${i===PAL.i?'on':''} ${x.off?'off':''}" data-i="${i}" role="option">${x.tag?`<span class="pr pr${x.p}">${x.tag}</span>`:''}<span>${esc(x.t)}</span><span class="sp"></span>${x.g?`<kbd>${x.g}</kbd>`:''}</li>`).join(''):(PAL.mode==='att'?'<div class="none">Fila vazia. Nada esperando você.</div>':'<div class="none">Nada encontrado</div>');
   ul.querySelectorAll('li').forEach(li=>li.onclick=()=>{ PAL.i=+li.dataset.i; runPal(); }); const on=ul.querySelector('.on'); if(on) on.scrollIntoView({block:'nearest'}); }
 function runPal(){ const x=PAL.items[PAL.i]; closeOverlay(); if(x) x.run(); }
 function openHelp(){

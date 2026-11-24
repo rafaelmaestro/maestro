@@ -5,7 +5,6 @@ use gpui_kit::{prelude::FluentBuilder, *};
 use crate::{
     card_tab::CardTab,
     diff::{self, FileDiff, Kind},
-    editor::{self, FileEditor},
     feature,
     form::{FieldEvent, TextField, button},
     mr_tab::{self, MrTab},
@@ -18,17 +17,7 @@ enum Tab {
     Review,
     Mr,
     Card,
-    File,
     Prob,
-    /// "Histórico" do arquivo da aba da frente
-    Hist,
-}
-
-/// A aba Histórico: os commits do arquivo e o diff do escolhido.
-struct Hist {
-    path: String,
-    commits: Option<Vec<crate::blame::Commit>>,
-    sel: Option<(String, Vec<FileDiff>)>,
 }
 
 /// Como desfazer o que o painel acabou de fazer (o "Desfazer" do toast).
@@ -64,8 +53,6 @@ pub enum Event {
     MrOpened,
     /// "?" num bloco: a gaveta "Perguntar ao Claude"
     AskClaude(crate::ask::Ctx),
-    /// "Abrir MR" do blame: abre no modo MRs
-    OpenMr(crate::mrs::Row),
     /// o MR deste repo abriu (iid): a sub-task de Desenvolvimento dele vai para Pull Request
     MrOpenedIid(u64),
     /// `arquivo:linha` no editor externo
@@ -106,12 +93,6 @@ pub struct Review {
     turn: Option<usize>,
     turn_open: bool,
     scroll_to: Option<String>,
-    /// as abas de arquivo (o `S.file` do protótipo, uma por arquivo aberto) e a da frente
-    editors: Vec<Entity<FileEditor>>,
-    active: usize,
-    /// × num arquivo com edição não salva: o segundo × descarta
-    close_armed: Option<String>,
-    hist: Option<Hist>,
     mr: Option<Entity<MrTab>>,
     /// o card do Jira da sessão (um só para todos os repos dela)
     card: Option<Entity<CardTab>>,
@@ -215,10 +196,6 @@ impl Review {
             turn: None,
             turn_open: false,
             scroll_to: None,
-            editors: Vec::new(),
-            active: 0,
-            close_armed: None,
-            hist: None,
             mr: None,
             card: None,
             task_probs: Vec::new(),
@@ -230,107 +207,13 @@ impl Review {
         }
     }
 
-    fn editor(&self) -> Option<&Entity<FileEditor>> {
-        self.editors.get(self.active)
-    }
-
-    /// Fecha a aba do arquivo; com edição não salva, só no segundo clique.
-    fn close_file(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(e) = self.editors.get(i) else { return };
-        let (path, dirty) = {
-            let e = e.read(cx);
-            (e.path.clone(), e.dirty(cx))
-        };
-        if dirty && self.close_armed.as_deref() != Some(&path) {
-            self.close_armed = Some(path.clone());
-            cx.emit(Event::Toast(
-                format!("{path} tem alterações não salvas: Ctrl+S salva, × de novo descarta"),
-                None,
-            ));
-            return cx.notify();
-        }
-        self.close_armed = None;
-        self.drop_tab(i, window, cx);
-    }
-
-    fn drop_tab(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {
-        self.editors.remove(i);
-        if self.active >= i && self.active > 0 {
-            self.active -= 1;
-        }
-        if self.editors.is_empty() && matches!(self.tab, Tab::File | Tab::Hist) {
-            self.tab = Tab::Review;
-        }
-        let f = self.focus_handle(cx);
-        window.focus(&f, cx);
-        cx.notify();
-    }
-
-    /// Abas do arquivo `path` ou de dentro da pasta `path`.
-    fn under(&self, path: &str, cx: &App) -> Vec<usize> {
-        let dir = format!("{path}/");
-        (0..self.editors.len())
-            .rev()
-            .filter(|&i| {
-                let p = &self.editors[i].read(cx).path;
-                p == path || p.starts_with(&dir)
-            })
-            .collect()
-    }
-
-    pub fn dirty_under(&self, path: &str, cx: &App) -> bool {
-        self.under(path, cx)
-            .into_iter()
-            .any(|i| self.editors[i].read(cx).dirty(cx))
-    }
-
-    /// O arquivo (ou a pasta) saiu do disco: as abas dele fecham sem perguntar.
-    pub fn forget(&mut self, path: &str, window: &mut Window, cx: &mut Context<Self>) {
-        for i in self.under(path, cx) {
-            self.drop_tab(i, window, cx);
-        }
-    }
-
-    /// Renomeado na árvore: a aba reabre no caminho novo.
-    pub fn moved(&mut self, from: &str, to: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let moved: Vec<String> = self
-            .under(from, cx)
-            .into_iter()
-            .rev()
-            .map(|i| format!("{to}{}", &self.editors[i].read(cx).path[from.len()..]))
-            .collect();
-        if moved.is_empty() {
-            return;
-        }
-        self.forget(from, window, cx);
-        for p in moved {
-            self.open_file(p, window, cx);
-        }
-    }
-
     pub fn contains_focus(&self, window: &Window, cx: &App) -> bool {
         self.focus.contains_focused(window, cx)
-            || self
-                .editors
-                .iter()
-                .any(|e| e.read(cx).focus_handle(cx).is_focused(window))
     }
 
     pub fn focus_handle(&self, cx: &App) -> FocusHandle {
-        match (self.editor(), self.tab == Tab::File) {
-            (Some(e), true) => e.read(cx).focus_handle(cx),
-            _ => self.focus.clone(),
-        }
-    }
-
-    /// Volta para a aba do arquivo aberto, se houver.
-    pub fn file_tab(&mut self, cx: &mut Context<Self>) -> bool {
-        let has = !self.editors.is_empty();
-        if has {
-            self.tab = Tab::File;
-            cx.notify();
-        }
-        has
+        let _ = cx;
+        self.focus.clone()
     }
 
     pub fn show_file(&mut self, path: String, cx: &mut Context<Self>) {
@@ -434,26 +317,9 @@ impl Review {
         cx.notify();
     }
 
-    /// Diagnósticos do LSP e erros das tarefas: (grupo, erro?, mensagem, arquivo relativo, linha).
+    /// Erros das tarefas: (grupo, erro?, mensagem, arquivo relativo, linha).
     fn problems(&self) -> Vec<(String, bool, String, String, u32)> {
-        let mut out: Vec<_> = crate::lsp::diagnostics_under(&self.root)
-            .into_iter()
-            .filter(|(_, d)| {
-                d.severity.is_none_or(|s| {
-                    s == lsp_types::DiagnosticSeverity::ERROR
-                        || s == lsp_types::DiagnosticSeverity::WARNING
-                })
-            })
-            .map(|(p, d)| {
-                let file = p
-                    .strip_prefix(&self.root)
-                    .unwrap_or(&p)
-                    .to_string_lossy()
-                    .into_owned();
-                let err = d.severity != Some(lsp_types::DiagnosticSeverity::WARNING);
-                (String::new(), err, d.message, file, d.range.start.line + 1)
-            })
-            .collect();
+        let mut out = Vec::new();
         out.extend(self.task_probs.iter().map(|(t, p)| {
             (
                 t.clone(),
@@ -488,7 +354,7 @@ impl Review {
                             .child("Nenhum problema"),
                     )
                     .child(div().text_color(t.muted).child(
-                        "Diagnósticos do servidor de linguagem e erros das tarefas aparecem aqui.",
+                        "Os erros das tarefas (build, lint, test) aparecem aqui. O clique abre o arquivo na linha no seu editor.",
                     )),
             );
         }
@@ -560,167 +426,9 @@ impl Review {
         Some(c)
     }
 
-    /// O `openFile` do protótipo: o arquivo vira a aba ao lado de Revisar.
-    pub fn open_file(&mut self, path: String, window: &mut Window, cx: &mut Context<Self>) {
-        self.tab = Tab::File;
-        if let Some(i) = self.editors.iter().position(|e| e.read(cx).path == path) {
-            self.active = i;
-            let f = self.focus_handle(cx);
-            window.focus(&f, cx);
-            return cx.notify();
-        }
-        let (root, theme) = (self.root.clone(), self.theme.clone());
-        let e = cx.new(|cx| FileEditor::new(root, path, theme, window, cx));
-        cx.subscribe_in(
-            &e,
-            window,
-            |this, _, e: &editor::Event, window, cx| match e {
-                editor::Event::Changed => cx.notify(),
-                editor::Event::Toast(m) => cx.emit(Event::Toast(m.clone(), None)),
-                editor::Event::ShowDiff(p) => this.show_file(p.clone(), cx),
-                editor::Event::Open(abs, line) => this.open_at(abs, *line, window, cx),
-                editor::Event::OpenMr(row) => cx.emit(Event::OpenMr((**row).clone())),
-                editor::Event::History => this.open_history(cx),
-                editor::Event::CloseTab => this.close_file(this.active, window, cx),
-                editor::Event::CycleTab(next) => {
-                    let n = this.editors.len();
-                    if n > 1 {
-                        this.active = if *next {
-                            (this.active + 1) % n
-                        } else {
-                            (this.active + n - 1) % n
-                        };
-                        let f = this.focus_handle(cx);
-                        window.focus(&f, cx);
-                        cx.notify();
-                    }
-                }
-            },
-        )
-        .detach();
-        self.editors.push(e);
-        self.active = self.editors.len() - 1;
-        cx.notify();
-    }
-
-    /// Ir para a definição: abre a aba do arquivo (se for desta worktree) já na linha.
-    fn open_at(
-        &mut self,
-        abs: &std::path::Path,
-        line: u32,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Ok(rel) = abs.strip_prefix(&self.root) else {
-            return cx.emit(Event::Toast(
-                format!(
-                    "A definição está fora da worktree: {}:{}",
-                    abs.display(),
-                    line + 1
-                ),
-                None,
-            ));
-        };
-        self.open_file(rel.to_string_lossy().into_owned(), window, cx);
-        if let Some(e) = self.editor().cloned() {
-            e.update(cx, |e, cx| e.goto(line, window, cx));
-        }
-    }
-
-    pub fn goto_line(&mut self, line: u32, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(e) = self.editor().cloned() {
-            e.update(cx, |e, cx| e.goto(line, window, cx));
-        }
-    }
-
-    /// A aba Histórico do arquivo da frente (`git log --follow`).
-    pub fn open_history(&mut self, cx: &mut Context<Self>) {
-        let Some(path) = self.editor().map(|e| e.read(cx).path.clone()) else {
-            return;
-        };
-        self.tab = Tab::Hist;
-        if self.hist.as_ref().is_some_and(|h| h.path == path) {
-            return cx.notify();
-        }
-        self.hist = Some(Hist {
-            path: path.clone(),
-            commits: None,
-            sel: None,
-        });
-        let root = self.root.clone();
-        cx.spawn(async move |this, cx| {
-            let p = path.clone();
-            let commits = cx
-                .background_executor()
-                .spawn(async move { crate::blame::history(&root, &p) })
-                .await;
-            this.update(cx, |this, cx| {
-                if let Some(h) = this.hist.as_mut().filter(|h| h.path == path) {
-                    h.commits = Some(commits);
-                    cx.notify();
-                }
-            })
-            .ok();
-        })
-        .detach();
-        cx.notify();
-    }
-
-    fn pick_commit(&mut self, sha: String, cx: &mut Context<Self>) {
-        let Some(path) = self.hist.as_ref().map(|h| h.path.clone()) else {
-            return;
-        };
-        let root = self.root.clone();
-        cx.spawn(async move |this, cx| {
-            let (s, p) = (sha.clone(), path.clone());
-            let files = cx
-                .background_executor()
-                .spawn(async move { crate::blame::commit_diff(&root, &s, &p) })
-                .await;
-            this.update(cx, |this, cx| {
-                if let Some(h) = this.hist.as_mut().filter(|h| h.path == path) {
-                    h.sel = Some((sha, files));
-                    cx.notify();
-                }
-            })
-            .ok();
-        })
-        .detach();
-    }
-
-    /// ((erros, avisos) com servidor rodando, "TS · servidor") do arquivo da frente, para a barra de status.
-    pub fn lsp_status(&self, cx: &App) -> Option<(Option<(usize, usize)>, String)> {
-        let e = self.editor().filter(|_| self.tab == Tab::File)?.read(cx);
-        let counts = matches!(e.lsp, editor::Lsp::Ready(_)).then_some(e.problems);
-        Some((counts, e.lsp_label()?))
-    }
-
-    /// O arquivo da aba do editor e se tem edição não salva.
-    pub fn current_file(&self, cx: &App) -> Option<(String, bool, bool)> {
-        let e = self.editor()?.read(cx);
-        Some((e.path.clone(), e.dirty(cx), self.tab == Tab::File))
-    }
-
-    /// Linha e coluna para a barra de status, com o arquivo à frente.
-    pub fn cursor(&self, cx: &App) -> Option<(usize, usize)> {
-        self.editor()
-            .filter(|_| self.tab == Tab::File)
-            .map(|e| e.read(cx).cursor(cx))
-    }
-
-    pub fn save(&mut self, cx: &mut Context<Self>) {
-        match self.editor().cloned().filter(|_| self.tab == Tab::File) {
-            Some(e) => e.update(cx, |e, cx| e.save(cx)),
-            None => cx.emit(Event::Toast("Nada a salvar".into(), None)),
-        }
-    }
-
-    /// O `sendSel` do protótipo: a seleção do editor ou a linha marcada no diff.
-    pub fn selection_ref(&self, cx: &App) -> Option<String> {
-        match self.editor().filter(|_| self.tab == Tab::File) {
-            Some(e) => Some(e.read(cx).selection_ref(cx)),
-            None => self.selected.as_ref().map(|(p, n)| format!("@{p}:{n}")),
-        }
+    /// O `sendSel` do protótipo: a linha marcada no diff.
+    pub fn selection_ref(&self) -> Option<String> {
+        self.selected.as_ref().map(|(p, n)| format!("@{p}:{n}"))
     }
 
     pub fn run_tests(&mut self, cx: &mut Context<Self>) {
@@ -1103,7 +811,7 @@ impl Review {
     fn code(&self, text: &str) -> StyledText {
         let hl: Vec<_> = diff::highlight(text)
             .into_iter()
-            .map(|(r, tok)| (r, editor::style(&self.theme, tok)))
+            .map(|(r, tok)| (r, diff::style(&self.theme, tok)))
             .collect();
         StyledText::new(text.to_string()).with_highlights(hl)
     }
@@ -1193,138 +901,6 @@ impl Review {
                     })
                     .when(d.field.is_none(), |x| x.child(d.body.clone())),
             )
-    }
-
-    /// O `renderHist` do protótipo: commits do arquivo e, no escolhido, o diff dele.
-    fn hist_body(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let t = &self.theme;
-        let mut body = div().id("hist").flex_1().min_h_0().overflow_y_scroll();
-        let Some(h) = &self.hist else { return body };
-        let n = h.commits.as_ref().map_or(0, Vec::len);
-        body = body.child(
-            div()
-                .flex()
-                .gap(px(10.))
-                .items_center()
-                .px(px(12.))
-                .py(px(6.))
-                .border_b_1()
-                .border_color(t.line)
-                .child(div().font_family(t.mono.clone()).child(h.path.clone()))
-                .child(
-                    div()
-                        .text_color(t.muted)
-                        .child(format!("git log --follow · {n} commits")),
-                ),
-        );
-        let Some(commits) = &h.commits else {
-            return body.child(
-                div()
-                    .p(px(12.))
-                    .text_color(t.muted)
-                    .child("Lendo o histórico…"),
-            );
-        };
-        let now = crate::blame::now();
-        let yellow: Hsla = rgb(0xf1fa8c).into();
-        for (i, c) in commits.iter().enumerate() {
-            let on = h.sel.as_ref().is_some_and(|(s, _)| *s == c.sha);
-            let sha = c.sha.clone();
-            body = body.child(
-                div()
-                    .id(("hc", i))
-                    .flex()
-                    .gap(px(10.))
-                    .items_baseline()
-                    .px(px(12.))
-                    .py(px(6.))
-                    .border_b_1()
-                    .border_color(t.line)
-                    .cursor_pointer()
-                    .when(on, |d| d.bg(t.accent_soft))
-                    .when(!on, |d| d.hover(|d| d.bg(t.raise)))
-                    .on_click(cx.listener(move |this, _, _, cx| this.pick_commit(sha.clone(), cx)))
-                    .child(
-                        div()
-                            .w(px(70.))
-                            .flex_none()
-                            .font_family(t.mono.clone())
-                            .text_size(px(12.5))
-                            .text_color(yellow)
-                            .child(c.sha.clone()),
-                    )
-                    .child(div().flex_1().min_w_0().child(c.subject.clone()).child(
-                        div().text_size(px(12.5)).text_color(t.muted).child(format!(
-                            "{} · {}",
-                            c.author,
-                            crate::blame::ago(now.saturating_sub(c.time))
-                        )),
-                    ))
-                    .child(
-                        div()
-                            .font_family(t.mono.clone())
-                            .text_color(t.muted)
-                            .child(c.mr.map_or("—".into(), |m| format!("!{m}"))),
-                    ),
-            );
-        }
-        match &h.sel {
-            None => body.child(
-                div()
-                    .px(px(12.))
-                    .py(px(10.))
-                    .text_color(t.muted)
-                    .child("Clique num commit para ver o diff deste arquivo nele."),
-            ),
-            Some((_, files)) => body.children(files.iter().map(|f| self.plain_diff(f))),
-        }
-    }
-
-    /// Diff só de leitura (sem aceitar/desfazer), para o Histórico.
-    fn plain_diff(&self, f: &FileDiff) -> Div {
-        let t = &self.theme;
-        let red: Hsla = rgb(0xff5555).into();
-        let num = |n: Option<u32>| {
-            div()
-                .w(px(40.))
-                .flex_none()
-                .text_right()
-                .pr(px(8.))
-                .text_color(t.comment)
-                .child(n.map_or(String::new(), |n| n.to_string()))
-        };
-        let mut block = div()
-            .flex()
-            .flex_col()
-            .font_family(t.mono.clone())
-            .text_size(px(13.5));
-        for h in &f.hunks {
-            block = block.child(
-                div()
-                    .px(px(12.))
-                    .py(px(2.))
-                    .bg(t.panel)
-                    .text_color(t.comment)
-                    .child(h.header.clone()),
-            );
-            for l in &h.lines {
-                let (sign, bg) = match l.kind {
-                    Kind::Add => ("+", Some(Hsla { a: 0.10, ..t.ok })),
-                    Kind::Del => ("-", Some(Hsla { a: 0.12, ..red })),
-                    Kind::Context => (" ", None),
-                };
-                block = block.child(
-                    div()
-                        .flex()
-                        .when_some(bg, |d, bg| d.bg(bg))
-                        .child(num(l.old))
-                        .child(num(l.new))
-                        .child(div().w(px(18.)).flex_none().text_color(t.muted).child(sign))
-                        .child(div().flex_1().min_w_0().child(self.code(&l.text))),
-                );
-            }
-        }
-        block
     }
 
     fn file_head(&self, fi: usize, f: &FileDiff, cx: &mut Context<Self>) -> Div {
@@ -1601,44 +1177,6 @@ impl Render for Review {
                 .child(label.to_string())
         };
         let probs = self.problems();
-        let file_tabs: Vec<_> = self
-            .editors
-            .iter()
-            .enumerate()
-            .map(|(i, e)| {
-                let (name, dirty) = {
-                    let e = e.read(cx);
-                    let name = e.path.rsplit('/').next().unwrap_or_default().to_string();
-                    (name, e.dirty(cx))
-                };
-                let on = self.tab == Tab::File && self.active == i;
-                tab("rt-file", &name, on)
-                    .id(("rt-file", i))
-                    .flex_none()
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |this, _, w, cx| {
-                        this.tab = Tab::File;
-                        this.active = i;
-                        let f = this.focus_handle(cx);
-                        w.focus(&f, cx);
-                        cx.notify();
-                    }))
-                    .child(
-                        div()
-                            .id(("rt-x", i))
-                            .w(px(14.))
-                            .text_center()
-                            .rounded(px(3.))
-                            .text_color(if dirty { t.accent } else { t.muted })
-                            .hover(|x| x.bg(t.raise).text_color(t.fg))
-                            .on_click(cx.listener(move |this, _, w, cx| {
-                                cx.stop_propagation();
-                                this.close_file(i, w, cx);
-                            }))
-                            .child(if dirty { "●" } else { "×" }),
-                    )
-            })
-            .collect();
         let mr_label = match self.mr.as_ref().and_then(|m| m.read(cx).fetch.clone()) {
             Some(crate::mr::Fetch::Mr(m)) => format!("MR !{}", m.iid),
             _ => "MR".into(),
@@ -1684,22 +1222,6 @@ impl Render for Review {
                     )
                 },
             )
-            .child(
-                div()
-                    .id("rt-files")
-                    .flex()
-                    .h_full()
-                    .min_w_0()
-                    .overflow_x_scroll()
-                    .children(file_tabs),
-            )
-            .when(!self.editors.is_empty(), |d| {
-                d.child(
-                    tab("rt-hist", "Histórico", self.tab == Tab::Hist)
-                        .cursor_pointer()
-                        .on_click(cx.listener(|this, _, _, cx| this.open_history(cx))),
-                )
-            })
             .child({
                 let n = probs.len();
                 tab("rt-prob", "Problemas", self.tab == Tab::Prob)
@@ -1770,32 +1292,6 @@ impl Render for Review {
                 .child(tabs)
                 .child(m);
         }
-        if let Some(e) = self.editor().cloned().filter(|_| self.tab == Tab::File) {
-            return div()
-                .track_focus(&self.focus)
-                .size_full()
-                .flex()
-                .flex_col()
-                .bg(t.win)
-                .text_color(t.fg)
-                .font_family(t.sans)
-                .text_size(px(14.))
-                .child(tabs)
-                .child(div().flex_1().min_h_0().child(e));
-        }
-        if self.tab == Tab::Hist {
-            return div()
-                .track_focus(&self.focus)
-                .size_full()
-                .flex()
-                .flex_col()
-                .bg(t.win)
-                .text_color(t.fg)
-                .font_family(t.sans)
-                .text_size(px(14.))
-                .child(tabs)
-                .child(self.hist_body(cx));
-        }
         let n = self.files.as_ref().map_or(0, Vec::len);
         let body = div().id("diff").flex_1().min_h_0().flex().flex_col();
         self.rows = self
@@ -1821,10 +1317,11 @@ impl Render for Review {
         }
         self.list.remeasure_items(0..new);
         if let Some(target) = self.scroll_to.take()
-            && let Some(fi) = self
-                .files
-                .as_ref()
-                .and_then(|f| f.iter().position(|x| x.path == target))
+            && let Some(fi) = self.files.as_ref().and_then(|f| {
+                f.iter().position(|x| {
+                    x.path == target || (target.ends_with('/') && x.path.starts_with(&target))
+                })
+            })
             && let Some(ix) = self.rows.iter().position(|r| *r == (fi, None, None))
         {
             self.list.scroll_to(ListOffset {

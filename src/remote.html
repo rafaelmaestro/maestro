@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#21222c">
+<title>Maestro</title>
+<style>
+:root{
+  --win:#282a36; --panel:#21222c; --raise:#313342; --line:#3b3d50; --fg:#f8f8f2; --muted:#9a9dbb; --comment:#6272a4;
+  --accent:#bd93f9; --accent-soft:rgba(189,147,249,.16); --ok:#50fa7b; --cyan:#8be9fd; --orange:#ffb86c; --bad:#ff5555;
+  --sans:"IBM Plex Sans",system-ui,sans-serif; --mono:"JetBrainsMono Nerd Font","JetBrains Mono",ui-monospace,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--win);color:var(--fg);font:15px/1.45 var(--sans);display:flex;flex-direction:column;
+  padding:env(safe-area-inset-top,0) env(safe-area-inset-right,0) 0 env(safe-area-inset-left,0)}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.top{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--line);background:var(--panel)}
+.top b{font-weight:600}
+.top .sp{flex:1}
+.top .meta{color:var(--muted);font-size:12px}
+.top .pill{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--muted);flex:none}
+.back{font-size:22px;line-height:1;color:var(--accent);padding:0 6px 0 0}
+.body{flex:1;overflow:auto;min-height:0;overscroll-behavior:contain}
+.sec{font:11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:12px 16px 4px}
+.row{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:2px 8px;padding:12px 16px;border-bottom:1px solid var(--line);text-align:left;width:100%}
+.row .g{font-family:var(--mono);grid-row:span 2}
+.row .b{font-family:var(--mono);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .m{grid-column:2;color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .a{color:var(--comment);font-size:12px}
+.row.att{background:rgba(255,184,108,.08)}
+.g.blocked{color:var(--orange)} .g.working{color:var(--cyan)} .g.done{color:var(--ok)} .g.idle,.g.unknown{color:var(--comment)}
+.chat{display:flex;flex-direction:column;gap:10px;padding:12px 12px 16px}
+.msg-u{align-self:flex-end;max-width:85%;background:var(--accent-soft);border:1px solid rgba(189,147,249,.35);border-radius:14px 14px 4px 14px;padding:8px 12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg-c{max-width:100%;line-height:1.5;overflow-wrap:anywhere}
+.msg-c p{margin:0 0 8px}.msg-c p:last-child{margin:0}
+.msg-c h4{margin:4px 0 6px;font-size:15px}
+.msg-c code{font:13px var(--mono);background:var(--raise);border-radius:4px;padding:0 4px}
+.msg-c pre{font:12px/1.45 var(--mono);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;overflow-x:auto;margin:0 0 8px;white-space:pre}
+.msg-c ul,.msg-c ol{margin:0 0 8px;padding-left:20px}
+.msg-c .tbl{display:grid;gap:6px;margin:0 0 8px}
+.msg-c .tbl>div{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:14px}
+.msg-c .tbl small{display:block;color:var(--muted);font:12px var(--mono)}
+.tools{align-self:flex-start;max-width:100%;border:1px solid var(--line);border-radius:10px;background:var(--panel);font-size:13px;overflow:hidden}
+.tools>button{display:flex;gap:8px;align-items:center;padding:7px 10px;width:100%;text-align:left;color:var(--muted)}
+.tools>button b{color:var(--fg);font-weight:500}
+.tools ul{list-style:none;margin:0;padding:0 10px 8px;font:12px/1.5 var(--mono);color:var(--muted)}
+.tools li{overflow-wrap:anywhere;padding:2px 0}
+.tools li span{color:var(--comment);display:block;padding-left:14px}
+.tools li span.err{color:var(--bad)}
+.typing{align-self:flex-start;color:var(--cyan);font-size:13px}
+.ask{border:1px solid var(--orange);border-radius:12px;padding:12px;display:grid;gap:8px;background:rgba(255,184,108,.06)}
+.ask .h{color:var(--orange);font-weight:600;font-size:13px}
+.ask code{font:13px var(--mono);background:var(--win);border-radius:6px;padding:6px 8px;display:block;overflow-wrap:anywhere;white-space:pre-wrap}
+.ask .why{color:var(--muted);font-size:13px}
+.ask .opts{display:grid;gap:6px}
+.ask .opts button{border:1px solid var(--line);background:var(--raise);border-radius:10px;padding:11px;font-size:15px;text-align:left}
+.ask .opts button:first-child{background:var(--accent);border-color:var(--accent);color:#282a36;font-weight:500}
+.empty{padding:48px 24px;display:grid;gap:12px;text-align:center;color:var(--muted)}
+.empty b{color:var(--fg);font-size:17px}
+.mono{font-family:var(--mono);font-size:12px}
+.pane{font:12px/1.45 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;padding:10px 12px;margin:0}
+.pane .out{color:var(--comment)}
+.keys{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:8px 12px;border-top:1px solid var(--line);background:var(--panel)}
+.keys button{border:1px solid var(--line);background:var(--raise);border-radius:8px;padding:10px 0;font-size:13px;display:grid;justify-items:center}
+.keys button small{color:var(--muted);font-size:11px}
+.ok{color:var(--ok);font-size:12px;padding:4px 12px 0;background:var(--panel)}
+.ok.err{color:var(--bad)}
+.ok:empty{display:none}
+.in{display:flex;gap:8px;align-items:flex-end;padding:8px 12px calc(12px + env(safe-area-inset-bottom,0px));background:var(--panel);border-top:1px solid var(--line)}
+.in textarea{flex:1;min-height:42px;max-height:120px;resize:none;background:var(--win);border:1px solid var(--line);border-radius:21px;color:var(--fg);font:16px var(--sans);padding:10px 14px}
+.send{width:42px;height:42px;border-radius:50%;background:var(--accent);color:#282a36;font-size:18px;flex:none}
+</style>
+</head>
+<body>
+<header class="top" id="top"><b>Maestro</b></header>
+<main class="body" id="body"></main>
+<footer id="foot"></footer>
+<script>
+const ST={blocked:['!','precisa de você'],working:['◐','trabalhando'],done:['✓','pronto pra revisar'],idle:['○','parado'],unknown:['·','—']};
+const ORDER={blocked:0,done:1,working:2,idle:3,unknown:4};
+const KEYS=[['1','',''],['2','',''],['3','',''],['⏎','Enter','enter'],['Esc','','esc']];
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let view='list', pane=null, raw=false, agents=[], timer=null, note='', noteErr=false, nosession=false, open={}, lastChat='';
+
+async function api(path,body){
+  const opt={headers:{'ngrok-skip-browser-warning':'1'},credentials:'same-origin'};
+  if(body!==undefined){ opt.method='POST'; opt.headers['Content-Type']='application/json'; opt.body=JSON.stringify(body); }
+  const r=await fetch(path,opt);
+  if(r.status===401){ nosession=true; render(); throw new Error('401'); }
+  if(!r.ok) throw new Error(await r.text()||('HTTP '+r.status));
+  return r.json();
+}
+
+function st(s){ return ST[s]||ST.unknown; }
+function agent(){ return agents.find(x=>x.pane===pane)||{label:pane,status:'unknown'}; }
+function row(a){ const [g,l]=st(a.status);
+  return `<button class="row ${a.status==='blocked'?'att':''}" data-p="${esc(a.pane)}"><span class="g ${esc(a.status)}">${g}</span><span class="b">${esc(a.label)}</span><span class="a">${esc(a.repo)}</span><span class="m">${l}${a.title?' · '+esc(a.title):''}</span></button>`; }
+
+/* Markdown do Claude no essencial: parágrafo, título, lista, tabela (vira cartões), bloco e `código` */
+function md(t){ let h='', list=null, tbl=[], code=null;
+  const inline=x=>esc(x).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+  const flush=()=>{ if(list){ h+=`<${list.t}>${list.i.map(i=>`<li>${inline(i)}</li>`).join('')}</${list.t}>`; list=null; }
+    if(tbl.length){ const [hd,...rows]=tbl; h+=`<div class="tbl">${(rows.length?rows:[hd]).map(r=>`<div>${inline(r[0]||'')}${r.slice(1).map((c,i)=>`<small>${rows.length?esc(hd[i+1]||'')+': ':''}${inline(c)}</small>`).join('')}</div>`).join('')}</div>`; tbl=[]; } };
+  for(const l of t.split('\n')){ let m;
+    if(code!==null){ if(/^\s*```/.test(l)){ h+=`<pre>${esc(code)}</pre>`; code=null; } else code+=(code?'\n':'')+l; continue; }
+    if(/^\s*```/.test(l)){ flush(); code=''; continue; }
+    if(/^\s*\|/.test(l)){ if(!/^\s*\|[\s|:-]+\|\s*$/.test(l)) tbl.push(l.trim().split('|').slice(1,-1).map(c=>c.trim())); continue; }
+    if((m=l.match(/^\s*[-*] (.*)/))){ if(!list||list.t!=='ul'){ flush(); list={t:'ul',i:[]}; } list.i.push(m[1]); continue; }
+    if((m=l.match(/^\s*\d+\. (.*)/))){ if(!list||list.t!=='ol'){ flush(); list={t:'ol',i:[]}; } list.i.push(m[1]); continue; }
+    flush();
+    if((m=l.match(/^#{1,6} (.*)/))) h+=`<h4>${inline(m[1])}</h4>`;
+    else if(l.trim()) h+=`<p>${inline(l)}</p>`; }
+  if(code!==null) h+=`<pre>${esc(code)}</pre>`;
+  flush(); return h; }
+
+function chatHtml(c,a){
+  if(c.none&&!c.items.length) return '<div class="empty"><span>Não achei a conversa deste Claude. Toque em Terminal para ver a tela.</span></div>';
+  let h=c.items.map((it,i)=>it.k==='u'?`<div class="msg-u">${esc(it.t)}</div>`
+    :it.k==='c'?`<div class="msg-c">${md(it.t)}</div>`
+    :`<div class="tools"><button data-tg="${i}">${open[pane+i]?'▾':'▸'} <b>${it.l.length} ${it.l.length>1?'ações':'ação'}</b> <span>${esc([...new Set(it.l.map(x=>x.n))].join(' · '))}</span></button>${open[pane+i]?`<ul>${it.l.map(x=>`<li>${esc(x.n)} ${esc(x.a)}${x.r?`<span class="${x.err?'err':''}">${esc(x.r)}</span>`:''}</li>`).join('')}</ul>`:''}</div>`).join('');
+  if(a.status==='working') h+=`<div class="typing">◐ ${esc(a.title||'trabalhando')}…</div>`;
+  if(a.status==='blocked'){
+    const p=c.pending, o=c.options||[];
+    const what=p?(p.n==='ExitPlanMode'?'O plano está pronto':p.n==='AskUserQuestion'?'O Claude tem uma pergunta':`O Claude quer usar ${p.n}`):'O Claude está esperando você';
+    h+=`<div class="ask"><span class="h">${esc(what)}</span>${p&&p.a&&p.n!=='ExitPlanMode'?`<code>${esc(p.a)}</code>`:''}${p&&p.desc?`<span class="why">${esc(p.desc)}</span>`:''}
+      ${o.length?`<div class="opts">${o.map(x=>`<button data-k="${esc(x.key)}">${esc(x.label)}</button>`).join('')}</div>`:'<span class="why">Não achei as opções na tela. Toque em Terminal para responder.</span>'}</div>`;
+  }
+  return h; }
+
+function render(){
+  if(nosession){
+    $('#top').innerHTML='<b>Maestro</b>'; $('#foot').innerHTML='';
+    $('#body').innerHTML='<div class="empty"><b>Leia o QR no Maestro</b><span>Este celular não está pareado, ou o acesso foi desligado ou pareado em outro aparelho.</span><span class="mono">Paleta → Celular: ligar acesso remoto</span></div>';
+    return; }
+  if(view==='list'){
+    const att=agents.filter(a=>a.status==='blocked'), rest=agents.filter(a=>a.status!=='blocked').sort((a,b)=>(ORDER[a.status]??4)-(ORDER[b.status]??4));
+    const work=agents.filter(a=>a.status==='working').length;
+    $('#top').innerHTML=`<b>Maestro</b><span class="sp"></span><span class="meta">${att.length?`<span style="color:var(--orange)">! ${att.length}</span> · `:''}${work} trabalhando</span>`;
+    $('#body').innerHTML=agents.length?(att.length?`<div class="sec">Precisa de você</div>${att.map(row).join('')}`:'')+(rest.length?`<div class="sec">Features</div>${rest.map(row).join('')}`:''):'<div class="empty"><span>Nenhum Claude rodando.</span></div>';
+    $('#foot').innerHTML='';
+    document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{ pane=b.dataset.p; view='feat'; raw=false; note=''; lastChat=''; $('#body').innerHTML=''; $('#foot').innerHTML=''; render(); poll(); });
+    return; }
+  const a=agent(); const [g,l]=st(a.status);
+  $('#top').innerHTML=`<button class="back" id="back" aria-label="Voltar">‹</button><span style="min-width:0;flex:1"><b class="mono" style="font-size:14px">${esc(a.label)}</b><br><span class="g ${esc(a.status)}" style="font-size:12px">${g} ${l}</span></span><button class="pill" id="mode">${raw?'Conversa':'Terminal'}</button>`;
+  $('#back').onclick=()=>{ view='list'; pane=null; render(); poll(); };
+  $('#mode').onclick=()=>{ raw=!raw; lastChat=''; $('#body').innerHTML=''; $('#foot').innerHTML=''; render(); poll(); };
+  if(!$('#txt')){
+    $('#foot').innerHTML=`<div id="keys"></div><div class="ok" id="note"></div><div class="in"><textarea id="txt" rows="1" placeholder="Mensagem para o Claude…" aria-label="Mensagem"></textarea><button class="send" id="send" aria-label="Enviar">↑</button></div>`;
+    $('#send').onclick=()=>{ const t=$('#txt').value.trim(); if(t) act('prompt',{text:t}).then(ok=>{ if(ok) $('#txt').value=''; }); };
+  }
+  $('#keys').innerHTML=raw?`<div class="keys">${KEYS.map(([k,l,v])=>`<button data-k="${v||k}">${k}${l?`<small>${l}</small>`:''}</button>`).join('')}</div>`:'';
+  bindKeys();
+  const n=$('#note'); n.textContent=note; n.className='ok'+(noteErr?' err':'');
+}
+
+function bindKeys(){ document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>act('keys',{key:b.dataset.k})); }
+
+async function act(what,body){
+  try{ await api(`/api/agents/${encodeURIComponent(pane)}/${what}`,body); note=what==='prompt'?'enviado':''; noteErr=false; render(); poll(); return true; }
+  catch(e){ if(e.message!=='401'){ note=e.message; noteErr=true; render(); } return false; }
+}
+
+function paintBody(html){
+  const body=$('#body'), atEnd=body.scrollHeight-body.scrollTop-body.clientHeight<60;
+  body.innerHTML=html;
+  document.querySelectorAll('[data-tg]').forEach(b=>b.onclick=()=>{ const k=pane+b.dataset.tg; open[k]=!open[k]; lastChat=''; poll(); });
+  bindKeys();
+  if(atEnd) body.scrollTop=body.scrollHeight;
+}
+
+async function poll(){
+  clearTimeout(timer); if(nosession||document.hidden) return;
+  try{
+    agents=(await api('/api/agents')).agents;
+    if(view==='feat'&&raw){
+      const r=await api(`/api/agents/${encodeURIComponent(pane)}/screen`).catch(e=>{ if(e.message==='401') throw e; return {text:e.message}; });
+      render(); paintBody(`<pre class="pane">${esc(r.text||'').split('\n').map(l=>/^\s*⎿/.test(l)?`<span class="out">${l}</span>`:l).join('\n')}</pre>`);
+    } else if(view==='feat'){
+      const c=await api(`/api/agents/${encodeURIComponent(pane)}/chat`).catch(e=>{ if(e.message==='401') throw e; return {items:[],none:true}; });
+      render(); const html=chatHtml(c,agent());
+      if(html!==lastChat){ lastChat=html; paintBody(`<div class="chat">${html}</div>`); }
+    } else render();
+  }catch(e){ if(e.message==='401') return; }
+  timer=setTimeout(poll,view==='feat'&&raw?1500:2000);
+}
+
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) poll(); });
+
+(async()=>{
+  const m=location.hash.match(/t=([0-9a-f]+)/);
+  if(m){ history.replaceState(null,'',location.pathname);
+    try{ await api('/api/pair',{token:m[1]}); }catch(e){} }
+  nosession=false; poll();
+})();
+</script>
+</body>
+</html>

@@ -10,7 +10,7 @@ use crate::{
     cleanup::{self, Cleanup},
     compare::{self, Attempt, Compare},
     confirm::{self, Answer, Choice, Chose, Confirm},
-    editor, feature,
+    feature,
     form::{FieldEvent, TextField, button},
     herdr::{self, Status},
     keys,
@@ -21,7 +21,7 @@ use crate::{
     palette_cmd::{self, Cmd, CommandPalette},
     prc_view::{self, PrcView},
     review::{self, Redo, Review},
-    sidebar::{FsOp, Go, Sidebar, SidebarEvent},
+    sidebar::{Go, Sidebar, SidebarEvent},
     terminal::TerminalView,
     theme::Theme,
     tour::{self, Anchors},
@@ -64,9 +64,6 @@ pub struct Shell {
     /// o card do Jira de cada sessão (a worktree do Claude dela), comum a todos os repos
     cards: std::collections::HashMap<std::path::PathBuf, Entity<CardTab>>,
     want_review: Option<Option<String>>,
-    want_file: Option<String>,
-    want_fs: Option<FsOp>,
-    want_file_at: Option<(String, u32)>,
     want_merged: Option<(std::path::PathBuf, u64, String)>,
     /// "⎇ repo · N" da lateral: a revisão daquela worktree
     want_review_at: Option<std::path::PathBuf>,
@@ -132,6 +129,12 @@ pub struct Shell {
     toast_seq: usize,
     want_dialog: bool,
     left: bool,
+    /// o acesso remoto ligado, o QR dele e o diálogo na tela
+    remote: Option<crate::remote::Remote>,
+    remote_qr: Vec<Vec<bool>>,
+    remote_dlg: bool,
+    remote_busy: bool,
+    _remote_tick: Option<Task<()>>,
 }
 
 /// As dicas da inbox e do MR (`HINTS.mrs`/`HINTS.mr` do protótipo).
@@ -274,7 +277,7 @@ const NIELSEN: &[(&str, &str)] = &[
     ),
     (
         "Minimalismo",
-        "O terminal ocupa o centro; o editor só aparece quando você pede para revisar.",
+        "O terminal ocupa o centro; o diff só aparece quando você pede para revisar, e editar é no seu editor (Ctrl+Shift+O).",
     ),
     (
         "Recuperação de erros",
@@ -397,8 +400,7 @@ impl Shell {
                 match e {
                     SidebarEvent::NewFeature => this.want_dialog = true,
                     SidebarEvent::OpenReview(p) => this.want_review = Some(Some(p.clone())),
-                    SidebarEvent::OpenFile(p) => this.want_file = Some(p.clone()),
-                    SidebarEvent::OpenFileAt(p, l) => this.want_file_at = Some((p.clone(), *l)),
+                    SidebarEvent::OpenIn(p) => this.open_in(p.clone().map(|p| (p, 1)), None, cx),
                     SidebarEvent::Merged(wt, iid, branch) => {
                         this.close_fixed(wt.clone(), *iid, branch.clone(), cx);
                         this.want_merged = Some((wt.clone(), *iid, branch.clone()))
@@ -417,8 +419,6 @@ impl Shell {
                     SidebarEvent::Picked => this.leave_modes(),
                     SidebarEvent::OpenReviewAt(p) => this.want_review_at = Some(p.clone()),
                     SidebarEvent::Stack(wt, st) => this.want_stack = Some((wt.clone(), *st)),
-                    SidebarEvent::Fs(op) => this.want_fs = Some(op.clone()),
-                    SidebarEvent::Toast(m) => this.toast(m.clone(), cx),
                     SidebarEvent::Remove(wt) => this.want_remove = Some(wt.clone()),
                 }
                 cx.notify();
@@ -495,9 +495,6 @@ impl Shell {
             last_top: None,
             cards: Default::default(),
             want_review: None,
-            want_file: None,
-            want_fs: None,
-            want_file_at: None,
             want_merged: None,
             want_review_at: None,
             want_stack: None,
@@ -541,6 +538,11 @@ impl Shell {
             toast_seq: 0,
             want_dialog: false,
             left: true,
+            remote: None,
+            remote_qr: Vec::new(),
+            remote_dlg: false,
+            remote_busy: false,
+            _remote_tick: None,
         }
     }
 
@@ -575,7 +577,6 @@ impl Shell {
                 "o" => return self.run(Cmd::OpenIn(None, None), window, cx),
                 "b" => return self.run(Cmd::ToggleLeft, window, cx),
                 "f" if self.in_vault => return self.run(Cmd::NoteFormat, window, cx),
-                "f" => return self.run(Cmd::Files, window, cx),
                 "k" => return self.run(Cmd::Kcmd, window, cx),
                 "d" => return self.run(Cmd::DbMenu, window, cx),
                 _ => {}
@@ -678,6 +679,7 @@ impl Shell {
                 }
             }
             items.extend(self.task_items(cx));
+            items.extend(self.remote_items());
             self.open_palette(
                 items,
                 "Comando ou nome da feature…",
@@ -828,6 +830,152 @@ impl Shell {
         if let Some(m) = &self.mrs {
             m.update(cx, |m, cx| m.open_key(key, cx));
         }
+    }
+
+    /// Os comandos "Celular: …" da paleta, conforme o acesso está ligado ou não.
+    fn remote_items(&self) -> Vec<palette_cmd::Item> {
+        let item = |title: &str, key: &str, cmd: Option<Cmd>| palette_cmd::Item {
+            title: title.into(),
+            key: key.into(),
+            cmd,
+            tag: None,
+        };
+        if self.remote.is_some() {
+            return vec![
+                item(
+                    "Celular: mostrar QR de pareamento",
+                    "",
+                    Some(Cmd::RemoteShow),
+                ),
+                item("Celular: desligar acesso remoto", "", Some(Cmd::RemoteOff)),
+            ];
+        }
+        if herdr::in_path("ngrok") {
+            vec![item(
+                "Celular: ligar acesso remoto",
+                "",
+                Some(Cmd::RemoteOn),
+            )]
+        } else {
+            vec![item(
+                "Celular: ligar acesso remoto",
+                "ngrok não encontrado no PATH",
+                None,
+            )]
+        }
+    }
+
+    fn remote_on(&mut self, cx: &mut Context<Self>) {
+        if self.remote.is_some() {
+            self.remote_dlg = true;
+            return cx.notify();
+        }
+        if self.remote_busy {
+            return;
+        }
+        let Some(herdr) = self.sidebar.as_ref().map(|s| s.read(cx).herdr()) else {
+            return self.toast("O acesso remoto precisa do herdr".into(), cx);
+        };
+        self.remote_busy = true;
+        self.toast("Ligando o acesso remoto…".into(), cx);
+        cx.spawn(async move |this, cx| {
+            let r = cx
+                .background_executor()
+                .spawn(async move {
+                    crate::remote::Remote::start("ngrok", move |m, p| herdr.call(m, p))
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.remote_busy = false;
+                match r {
+                    Ok(r) => {
+                        this.remote_qr = crate::remote::qr(&r.pair_url());
+                        this.remote = Some(r);
+                        this.remote_dlg = true;
+                        this.remote_tick(cx);
+                        cx.notify();
+                    }
+                    Err(e) => this.toast(e, cx),
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// A cada 30 s: os minutos da barra de status e o desligamento sozinho.
+    fn remote_tick(&mut self, cx: &mut Context<Self>) {
+        self._remote_tick = Some(cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_secs(30))
+                    .await;
+                let alive = this.update(cx, |this, cx| {
+                    match this.remote.as_ref().map(|r| r.server.expiry()) {
+                        Some(Some(why)) => this.remote_off(Some(why), cx),
+                        Some(None) => cx.notify(),
+                        None => {}
+                    }
+                    this.remote.is_some()
+                });
+                if !alive.unwrap_or(false) {
+                    break;
+                }
+            }
+        }));
+    }
+
+    fn remote_off(&mut self, why: Option<&str>, cx: &mut Context<Self>) {
+        if self.remote.take().is_none() {
+            return;
+        }
+        self.remote_qr.clear();
+        self.remote_dlg = false;
+        self.toast(
+            why.unwrap_or("Acesso remoto desligado. O link do celular parou de responder.")
+                .into(),
+            cx,
+        );
+        cx.notify();
+    }
+
+    fn remote_overlay(&self, cx: &mut Context<Self>) -> Div {
+        let t = &self.theme;
+        let Some(r) = &self.remote else {
+            return div();
+        };
+        let acts = div()
+            .flex()
+            .gap(px(8.))
+            .items_center()
+            .child(
+                button(t, "rem-re", "Parear de novo", false).on_click(cx.listener(
+                    |this, _, _, cx| {
+                        if let Some(r) = &mut this.remote {
+                            r.repair();
+                            this.remote_qr = crate::remote::qr(&r.pair_url());
+                        }
+                        this.toast(
+                            "QR novo. O aparelho pareado antes foi desconectado.".into(),
+                            cx,
+                        );
+                    },
+                )),
+            )
+            .child(div().flex_1())
+            .child(
+                button(t, "rem-off", "Desligar", false)
+                    .text_color(rgb(0xff5555))
+                    .on_click(cx.listener(|this, _, _, cx| this.remote_off(None, cx))),
+            )
+            .child(
+                button(t, "rem-x", "Fechar", false)
+                    .child(self.kbd("Esc"))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.remote_dlg = false;
+                        cx.notify();
+                    })),
+            );
+        crate::remote_view::dialog(t, r.url(), &self.remote_qr, r.server.left(), acts)
     }
 
     pub fn toast(&mut self, msg: String, cx: &mut Context<Self>) {
@@ -1073,103 +1221,6 @@ impl Shell {
         .detach();
         self.confirm = Some(c);
         cx.notify();
-    }
-
-    /// Botão direito na aba Arquivos: mexe no disco e leva as abas do editor junto.
-    // ponytail: copiar e excluir rodam na thread da UI; uma pasta enorme trava a janela, mandar para o background_executor se pesar
-    fn file_op(&mut self, op: FsOp, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(sidebar) = self.sidebar.clone() else {
-            return;
-        };
-        let Some(root) = sidebar.read(cx).top_worktree() else {
-            return;
-        };
-        // as abas só são desta árvore se a revisão estiver na mesma worktree (multi-repo troca a dela)
-        let review = self.review.clone().filter(|r| r.read(cx).root == root);
-        let dirty = |p: &str, cx: &App| {
-            review
-                .as_ref()
-                .is_some_and(|r| r.read(cx).dirty_under(p, cx))
-        };
-        match op {
-            FsOp::Create(rel, dir) => match changes::create(&root, &rel, dir) {
-                Ok(rel) => {
-                    sidebar.update(cx, |s, cx| s.reload_files(Some(&rel), cx));
-                    if !dir {
-                        self.run(Cmd::OpenFile(rel), window, cx);
-                    }
-                }
-                Err(e) => self.toast(e, cx),
-            },
-            FsOp::Copy(from, dir) => match changes::copy(&root, &from, &dir) {
-                Ok(rel) => {
-                    sidebar.update(cx, |s, cx| s.reload_files(Some(&rel), cx));
-                    self.toast(format!("Colado: {rel}"), cx);
-                }
-                Err(e) => self.toast(e, cx),
-            },
-            FsOp::Rename(from, to) => {
-                if dirty(&from, cx) {
-                    return self.toast(
-                        format!("{from} tem alterações não salvas: salve antes de renomear"),
-                        cx,
-                    );
-                }
-                match changes::rename(&root, &from, &to) {
-                    Ok(to) => {
-                        if let Some(r) = &review {
-                            r.update(cx, |r, cx| r.moved(&from, &to, window, cx));
-                        }
-                        sidebar.update(cx, |s, cx| s.reload_files(Some(&to), cx));
-                    }
-                    Err(e) => self.toast(e, cx),
-                }
-            }
-            FsOp::Delete(rel, dir) => {
-                if dirty(&rel, cx) {
-                    return self.toast(
-                        format!("{rel} tem alterações não salvas: salve antes de excluir"),
-                        cx,
-                    );
-                }
-                let title = if dir {
-                    let inner = format!("{rel}/");
-                    let n = changes::files(&root)
-                        .iter()
-                        .filter(|f| f.starts_with(&inner) && !f.ends_with('/'))
-                        .count();
-                    format!(
-                        "Excluir a pasta {rel} e {n} arquivo{}?",
-                        if n == 1 { "" } else { "s" }
-                    )
-                } else {
-                    format!("Excluir {rel}?")
-                };
-                let text = "Some do disco. O que o git já conhece volta com git restore; o resto não volta.".to_string();
-                let theme = self.theme.clone();
-                let c = cx.new(|cx| Confirm::new(theme, title, text, "Excluir", true, window, cx));
-                cx.subscribe_in(&c, window, move |this, _, a: &Answer, window, cx| {
-                    this.confirm = None;
-                    window.focus(&this.terminal.read(cx).focus_handle(), cx);
-                    if matches!(a, Answer::Ok) {
-                        match changes::remove(&root, &rel) {
-                            Ok(()) => {
-                                if let Some(r) = &review {
-                                    r.update(cx, |r, cx| r.forget(&rel, window, cx));
-                                }
-                                sidebar.update(cx, |s, cx| s.reload_files(None, cx));
-                                this.toast(format!("{rel} excluído"), cx);
-                            }
-                            Err(e) => this.toast(format!("Não deu para excluir {rel}: {e}"), cx),
-                        }
-                    }
-                    cx.notify();
-                })
-                .detach();
-                self.confirm = Some(c);
-                cx.notify();
-            }
-        }
     }
 
     /// O `compareDlg` do protótipo para o grupo da feature em foco.
@@ -1465,11 +1516,6 @@ impl Shell {
             if this.review.as_ref() != Some(&r) {
                 return cx.notify();
             }
-            // o arquivo aberto (e se está sujo) aparece marcado na aba Arquivos da lateral
-            let open = r.read(cx).current_file(cx);
-            if let Some(s) = &this.sidebar {
-                s.update(cx, |s, cx| s.set_open(open, cx));
-            }
             cx.notify();
         })
         .detach();
@@ -1541,12 +1587,6 @@ impl Shell {
                         .unwrap_or_default();
                     if let Some(c) = this.cards.get(&owner).cloned() {
                         c.update(cx, |c, cx| c.mr_opened(&name, *iid, cx));
-                    }
-                }
-                review::Event::OpenMr(row) => {
-                    this.run(Cmd::Mrs, window, cx);
-                    if let Some(m) = this.mrs.clone() {
-                        m.update(cx, |m, cx| m.open_row(row.clone(), cx));
                     }
                 }
             },
@@ -2163,14 +2203,14 @@ impl Shell {
     /// O `sendSel` do protótipo: `@arquivo:linhas` digitado no Claude da feature, sem Enter.
     fn send_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(r) = self.review.clone() else {
-            return self.toast("Selecione linhas no editor ou no diff".into(), cx);
+            return self.toast("Marque uma linha no diff".into(), cx);
         };
         let (root, sel) = {
             let r = r.read(cx);
-            (r.root.clone(), r.selection_ref(cx))
+            (r.root.clone(), r.selection_ref())
         };
         let Some(sel) = sel else {
-            return self.toast("Selecione linhas no editor ou no diff".into(), cx);
+            return self.toast("Marque uma linha no diff".into(), cx);
         };
         let (Some(pane), Some(s)) = (self.claude_pane(&root, cx), self.sidebar.clone()) else {
             return self.toast(
@@ -2322,31 +2362,6 @@ impl Shell {
         self.kcmd = Some(k);
         cx.stop_propagation();
         cx.notify();
-    }
-
-    /// "Arquivo: Abrir…": os arquivos da worktree em foco, na mesma paleta.
-    fn open_file_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(root) = self
-            .sidebar
-            .as_ref()
-            .and_then(|s| s.read(cx).top_worktree())
-        else {
-            return self.toast(
-                "Abra um terminal num repositório para abrir arquivos".into(),
-                cx,
-            );
-        };
-        let items = crate::changes::files(&root)
-            .into_iter()
-            .filter(|p| !p.ends_with('/'))
-            .map(|p| palette_cmd::Item {
-                title: p.clone(),
-                key: String::new(),
-                cmd: Some(Cmd::OpenFile(p)),
-                tag: None,
-            })
-            .collect();
-        self.open_palette(items, "Nome do arquivo…", "Nada encontrado", window, cx);
     }
 
     fn open_in(
@@ -2635,32 +2650,6 @@ impl Shell {
                     r.update(cx, |r, cx| r.show_problems(cx));
                 }
             }
-            Cmd::Files => {
-                self.left = true;
-                self.in_vault = false;
-                self.in_news = false;
-                self.in_db = false;
-                self.in_prc = false;
-                self.in_mrs = false;
-                self.in_audit = false;
-                if let Some(s) = &self.sidebar {
-                    s.update(cx, |s, cx| s.show_files(cx));
-                }
-                if let Some(r) = &self.review
-                    && r.update(cx, |r, cx| r.file_tab(cx))
-                {
-                    let f = r.read(cx).focus_handle(cx);
-                    window.focus(&f, cx);
-                } else {
-                    window.focus(&self.terminal.read(cx).focus_handle(), cx);
-                }
-            }
-            Cmd::SearchProject => {
-                self.run(Cmd::Files, window, cx);
-                if let Some(s) = &self.sidebar {
-                    s.update(cx, |s, cx| s.focus_search(cx));
-                }
-            }
             Cmd::RepoMenu => {
                 let top = self.sidebar.as_ref().and_then(|s| s.read(cx).top_repo());
                 let mut repos: Vec<std::path::PathBuf> =
@@ -2934,6 +2923,12 @@ impl Shell {
                 self.tunnels.update(cx, |t, cx| t.toggle(&name, cx));
                 return cx.notify();
             }
+            Cmd::RemoteOn => return self.remote_on(cx),
+            Cmd::RemoteShow => {
+                self.remote_dlg = self.remote.is_some();
+                return cx.notify();
+            }
+            Cmd::RemoteOff => return self.remote_off(None, cx),
             Cmd::TunnelsOn => {
                 self.tunnels.update(cx, |t, cx| t.start_all(cx));
             }
@@ -2972,18 +2967,8 @@ impl Shell {
             Cmd::Compare => return self.open_compare(window, cx),
             Cmd::Review => return self.toggle_review(None, window, cx),
             Cmd::SendSelection => return self.send_selection(window, cx),
-            Cmd::OpenFileMenu => return self.open_file_menu(window, cx),
             Cmd::OpenIn(at, id) => return self.open_in(at, id, cx),
             Cmd::OpenInMenu => return self.toggle_open_in_menu(cx),
-            Cmd::OpenFile(p) => {
-                if self.review.is_none() {
-                    self.toggle_review(None, window, cx);
-                }
-                if let Some(r) = &self.review {
-                    r.update(cx, |r, cx| r.open_file(p, window, cx));
-                }
-                return cx.notify();
-            }
             Cmd::OpenMr => {
                 if self.review.is_none() {
                     self.toggle_review(None, window, cx);
@@ -2992,12 +2977,6 @@ impl Shell {
                     r.update(cx, |r, cx| r.open_mr(cx));
                 }
                 return cx.notify();
-            }
-            Cmd::Save => {
-                if let Some(r) = &self.review {
-                    r.update(cx, |r, cx| r.save(cx));
-                }
-                return;
             }
             Cmd::Affected | Cmd::SendReview => {
                 if self.review.is_none() {
@@ -3802,19 +3781,6 @@ impl Shell {
         for (k, v, _) in self.screen_hints(cx).iter().chain(
             [
                 ("Ctrl+Shift+O", "abrir no editor", true),
-                ("Ctrl+Shift+F", "árvore de arquivos", true),
-                ("Ctrl+F · Ctrl+H", "buscar · substituir no arquivo", true),
-                ("Ctrl+/", "comentar as linhas", true),
-                ("Alt+↑/↓", "mover a linha", true),
-                ("Ctrl+G", "ir para a linha", true),
-                ("Ctrl+] · Ctrl+[", "recuar · desrecuar", true),
-                ("F12 · Ctrl+.", "definição · ações do LSP", true),
-                ("Ctrl+W · Ctrl+Tab", "fechar · trocar a aba do editor", true),
-                (
-                    "Árvore",
-                    "↑/↓, Enter, F2, Delete, Ctrl+C/X/V; arraste para mover",
-                    true,
-                ),
                 ("Alt+1…6", "Features, MRs, Bancos, Vault, News, Fila", true),
                 ("Alt+7", "nota nova no Vault", true),
                 ("Alt+8", "PRCs", true),
@@ -4016,6 +3982,21 @@ impl Shell {
                             .on_click(cx.listener(|this, _, w, cx| this.run(Cmd::Db, w, cx))),
                     );
                 }
+                if let Some(r) = &self.remote {
+                    bar = bar.child(
+                        cell()
+                            .id("st-rem")
+                            .cursor_pointer()
+                            .text_color(t.cyan)
+                            .child(format!(
+                                "📱 remoto · {}",
+                                crate::remote_view::left(r.server.left())
+                            ))
+                            .on_click(
+                                cx.listener(|this, _, w, cx| this.run(Cmd::RemoteShow, w, cx)),
+                            ),
+                    );
+                }
                 bar = bar.child(
                     cell().child(format!("hoje: US$ {}", crate::sidebar::brl(s.today_cost()))),
                 );
@@ -4037,32 +4018,7 @@ impl Shell {
                 }
             }
         }
-        let cursor = self.review.as_ref().and_then(|r| r.read(cx).cursor(cx));
-        let lsp = self.review.as_ref().and_then(|r| r.read(cx).lsp_status(cx));
-        let red: Hsla = rgb(0xff5555).into();
-        let yellow: Hsla = rgb(0xf1fa8c).into();
         bar.child(div().flex_1())
-            .children(lsp.map(|(counts, label)| {
-                let s = |n: usize| if n == 1 { "" } else { "s" };
-                cell()
-                    .gap(px(4.))
-                    .when_some(counts, |d, (e, w)| {
-                        d.child(
-                            div()
-                                .when(e > 0, |d| d.text_color(red))
-                                .child(format!("{e} erro{}", s(e))),
-                        )
-                        .child("·")
-                        .child(
-                            div()
-                                .when(w > 0, |d| d.text_color(yellow))
-                                .child(format!("{w} aviso{}", s(w))),
-                        )
-                        .child(div().w(px(8.)))
-                    })
-                    .child(div().text_color(t.muted).child(label))
-            }))
-            .children(cursor.map(|(l, c)| cell().child(format!("Ln {l}, Col {c}"))))
             .child(cell().border_r_0().child(format!("ghostty: {}", self.font)))
     }
 }
@@ -4148,11 +4104,6 @@ impl Render for Shell {
         self.maximized = window.is_maximized();
         if std::mem::take(&mut self.want_dialog) {
             self.open_new_feature(window, cx);
-        }
-        if self.review.is_none()
-            && let Some(s) = &self.sidebar
-        {
-            s.update(cx, |s, cx| s.set_open(None, cx));
         }
         if self.confirm.is_none()
             && self.choice.is_none()
@@ -4316,18 +4267,6 @@ impl Render for Shell {
             .detach();
             self.confirm = Some(c);
         }
-        if let Some(p) = self.want_file.take() {
-            self.run(Cmd::OpenFile(p), window, cx);
-        }
-        if let Some((p, line)) = self.want_file_at.take() {
-            self.run(Cmd::OpenFile(p), window, cx);
-            if let Some(r) = &self.review {
-                r.update(cx, |r, cx| r.goto_line(line, window, cx));
-            }
-        }
-        if let Some(op) = self.want_fs.take() {
-            self.file_op(op, window, cx);
-        }
         if let Some(p) = self.want_review.take() {
             self.toggle_review(p, window, cx);
         }
@@ -4368,10 +4307,6 @@ impl Render for Shell {
         div()
             .relative()
             .child(tour::anchor(&self.anchors, "root"))
-            .on_action(cx.listener(|this, _: &editor::LeaveEditor, window, cx| {
-                window.focus(&this.terminal.read(cx).focus_handle(), cx);
-                cx.notify();
-            }))
             .capture_key_down(cx.listener(|this, e: &KeyDownEvent, window, cx| {
                 if this.focus_arrow(&e.keystroke, window, cx) {
                     return cx.stop_propagation();
@@ -4392,6 +4327,9 @@ impl Render for Shell {
                         .is_some_and(|r| r.read(cx).editing_open());
                 if this.help {
                     this.help = false;
+                    cx.notify();
+                } else if this.remote_dlg {
+                    this.remote_dlg = false;
                     cx.notify();
                 } else if this.tour.is_some() {
                     this.end_tour(cx);
@@ -4545,6 +4483,33 @@ impl Render for Shell {
                     .justify_center()
                     .child(k)
             }))
+            .when(self.remote_dlg && self.remote.is_some(), |d| {
+                d.child(
+                    div()
+                        .id("remote-scrim")
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full()
+                        .flex()
+                        .justify_center()
+                        .items_start()
+                        .pt(px(60.))
+                        .px(px(16.))
+                        .bg(rgba(0x0a0a1080))
+                        .occlude()
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.remote_dlg = false;
+                            cx.notify();
+                        }))
+                        .child(
+                            self.remote_overlay(cx)
+                                .id("remote-dlg")
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                .on_click(|_, _, cx| cx.stop_propagation()),
+                        ),
+                )
+            })
             .when(self.help, |d| {
                 d.child(
                     div()

@@ -19,7 +19,7 @@
 
 ## Por que
 
-O dia a dia é o Claude Code no terminal. O editor serve para **revisar depois** o que ele fez. O Maestro foi desenhado a partir disso:
+O dia a dia é o Claude Code no terminal. O Maestro serve para **revisar depois** o que ele fez, e editar à mão é no editor que você já usa. Foi desenhado a partir disso:
 
 - **O terminal é o centro.** É um terminal de verdade, rodando o [herdr](https://github.com/herdrdev/herdr) com o visual do seu Ghostty: zsh, vim, lazygit e qualquer TUI.
 - **Várias features ao mesmo tempo, sem gerenciar worktree na mão.** Cada feature vira uma worktree com o próprio Claude, a própria porta e o próprio `docker compose`.
@@ -35,7 +35,7 @@ O dia a dia é o Claude Code no terminal. O editor serve para **revisar depois**
 - **Nova feature (`Alt+N`):** branch, base e prompt. O Maestro cria a worktree, copia os `.env*`, roda o setup do repo e abre o `claude` já com a tarefa.
 - **Lateral:** mostra o estado de cada agente (*precisa de você*, *trabalhando*, *pronto pra revisar*, *parado*), com custo e contexto usado.
 - **Mascote e fila de atenção (`Ctrl+Shift+Espaço`):** levam você direto ao pane que pediu permissão.
-- **`Ctrl+Shift+1…9`** pula de feature. **`Ctrl+Shift+←/→`** troca de pane e, na borda direita, entra no editor.
+- **`Ctrl+Shift+1…9`** pula de feature. **`Ctrl+Shift+←/→`** troca de pane e, na borda direita, entra no painel de revisão.
 - **Melhor de N:** 2 ou 3 tentativas do mesmo prompt, com modelos diferentes, e uma tela para comparar.
 
 ### Revisão do que o Claude fez
@@ -48,18 +48,13 @@ O dia a dia é o Claude Code no terminal. O editor serve para **revisar depois**
 - **Comentar e enviar:** comentários viram um prompt único com **Enviar ao Claude**, e as suas edições vão junto.
 - **Testes afetados:** rodam num split do terminal.
 
-### Editor com LSP
+### Abrir no seu editor
 
-<img src="docs/media/editor.gif" alt="Editor com LSP, blame e histórico" width="100%">
+O Maestro não tem editor próprio: ele abre o que você já usa.
 
-- **Diagnóstico** sublinhado e "N erros · M avisos" na barra.
-- **Hover**, **completar** e **ir para a definição** (`F12`), que abre outro arquivo se for preciso.
-- **Servidores de linguagem:**
-  - TypeScript/JavaScript: segue a versão do projeto, ou usa o TS 7 nativo;
-  - Rust, Go, Python e JSON;
-  - quando falta um servidor, aparece uma faixa com o comando de instalação.
-- **Blame e Histórico:** blame no fim da linha, com o MR que trouxe a mudança, e aba **Histórico** do arquivo.
-- **Abas e colunas:** abas com ×, com aviso se houver alteração não salva, e colunas redimensionáveis com o mouse.
+- **Abrir em ▾ (`Ctrl+Shift+O`):** abre a worktree da feature em foco no seu editor. A seta lista os editores achados no `PATH` (VS Code, Cursor, Zed, VSCodium, IntelliJ, WebStorm, GoLand, PyCharm, RustRover) e o gerenciador de arquivos; o escolhido fica salvo em `~/.config/maestro/editor.json`.
+- **Na linha certa, na janela certa:** `↗ Editor` num bloco do diff, **Abrir no editor** no arquivo, o `↗` da lateral e o clique em **Problemas** abrem `arquivo:linha` dentro da janela daquela worktree.
+- **Mudanças** na lateral: nome do arquivo primeiro, pasta nova numa linha só.
 
 ### MRs do GitLab
 
@@ -85,7 +80,7 @@ O dia a dia é o Claude Code no terminal. O editor serve para **revisar depois**
 <img src="docs/media/tasks.png" alt="Rodando uma tarefa e indo para o erro" width="100%">
 
 - **▶ Rodar tarefa…:** encontra os scripts do `package.json`, os alvos do `Makefile`, `cargo` e `go`.
-- Roda num split, e os erros caem na aba **Problemas** junto com os do LSP. O clique abre o arquivo na linha.
+- Roda num split, e os erros caem na aba **Problemas**. O clique abre o arquivo na linha no seu editor.
 
 ### MRs empilhados e repos extras
 
@@ -119,6 +114,21 @@ O dia a dia é o Claude Code no terminal. O editor serve para **revisar depois**
 - Cada item diz **por que** apareceu e **o que pode afetar**.
 - **Resumo do dia** na primeira abertura de cada dia.
 
+### Celular (acesso remoto)
+
+- **Celular: ligar acesso remoto** (paleta) sobe um servidor só em `127.0.0.1` e um túnel HTTPS do [ngrok](https://ngrok.com) até ele, e mostra um QR. A câmera do celular abre o painel no navegador, sem app.
+- Na primeira leitura, o ngrok gratuito pode mostrar uma página de aviso: toque em **Visit Site** e leia o QR de novo (o aviso não gasta o token).
+- No celular: as features com a fila de quem **precisa de você** no topo e, em cada uma, a conversa com o Claude lida do transcript da sessão (não do terminal): suas mensagens, as respostas com listas e tabelas, as ferramentas recolhidas em "▸ N ações" e um cartão com o que ele pede e um botão por opção do menu. **Terminal** mostra a tela crua com as teclas, para o que a conversa não cobre.
+- Fica de fora de propósito: terminal livre, revisão, MRs e Nova feature.
+- **📱 remoto** na barra de status mostra quanto falta para desligar. O clique reabre o QR, **Parear de novo** derruba o celular anterior e **Desligar** fecha o túnel.
+- **Segurança:**
+  - O acesso começa desligado a cada abertura do Maestro.
+  - O QR pareia um aparelho só: o token vai no `#` da URL e vale uma vez. Depois o celular fica com um cookie `HttpOnly`.
+  - O acesso desliga sozinho depois de 2 h sem uso ou 8 h ligado. Fechar o Maestro também derruba o túnel.
+  - Quem tem a sessão manda prompts aos seus Claudes, e prompt vira comando na sua máquina.
+  - O ngrok termina o HTTPS nos servidores dele e vê o tráfego (prompts e saída do terminal).
+  - Numa máquina da empresa, confira a política de segurança antes de ligar.
+
 ### PRCs
 
 <img src="docs/media/prcs.png" alt="Board de PRCs com as colunas do Jira" width="100%">
@@ -146,14 +156,11 @@ cargo build --release
 ./scripts/desktop.sh       # ícone e atalho no menu/dock
 ```
 
-**Servidores de linguagem (opcionais, um por linguagem):**
+**Celular (opcional):** instale o [ngrok](https://ngrok.com/download) e configure o authtoken da sua conta:
 
 ```sh
-npm i -g typescript                     # TypeScript 7: servidor nativo (tsc --lsp)
-npm i -g typescript-language-server     # usa o TypeScript do projeto quando há node_modules
-rustup component add rust-analyzer
-go install golang.org/x/tools/gopls@latest
-npm i -g pyright
+ngrok config add-authtoken 'SEU_TOKEN'
+ngrok config check
 ```
 
 **News (opcional):** gere um token pessoal em [daily.dev/settings/api](https://daily.dev/settings/api) e salve:
@@ -200,19 +207,17 @@ As variáveis de caminho servem principalmente para rodar uma instância de test
 | Atalho | Ação |
 |---|---|
 | `Ctrl+Shift+P` | paleta de comandos |
-| `Ctrl+Shift+O` / `Ctrl+Shift+F` | abrir arquivo / árvore do projeto |
+| `Ctrl+Shift+O` | abrir a feature no seu editor |
 | `Alt+1…5` | Features, MRs, Vault, Auditoria, News |
 | `Alt+8` | PRCs |
 | `Alt+N` | nova feature |
 | `Ctrl+Shift+1…9` | ir para a feature |
 | `Ctrl+Shift+Espaço` | próximo item da fila de atenção |
 | `Ctrl+Shift+E` | revisar mudanças da feature |
-| `Ctrl+Shift+←/→` | trocar de pane; na borda, entre terminal e editor |
+| `Ctrl+Shift+←/→` | trocar de pane; na borda, entre terminal e revisão |
 | `Ctrl+Shift+\` / `Ctrl+Shift+Enter` | dividir o terminal ao lado / embaixo |
-| `Ctrl+Shift+L` | mandar a seleção para o Claude |
+| `Ctrl+Shift+L` | mandar a linha marcada no diff para o Claude |
 | `Ctrl+Shift+K` | comando por descrição |
-| `F12` | ir para a definição |
-| `Shift+Alt+←/→` | selecionar por palavra no editor |
 | `?` | ajuda da tela atual |
 
 ## Como é feito
@@ -221,7 +226,6 @@ As variáveis de caminho servem principalmente para rodar uma instância de test
 - **Terminal:** `alacritty_terminal` com renderizador próprio, rodando o herdr. Abas, splits e detecção de agente vêm do socket dele.
 - **GitLab:** tudo pelo `glab`. Toda escrita passa por um único ponto e confere o `id` da resposta.
 - **Claude:** interativo no terminal. O revisor, a auditoria e o "Perguntar" rodam em `claude -p --output-format stream-json`, com ferramentas restritas a leitura.
-- **LSP:** um cliente próprio e mínimo (JSON-RPC no stdio) ligado ao editor do `gpui-component`.
 
 O desenho completo e as decisões de UX estão em [docs/DESIGN.md](docs/DESIGN.md); o andamento, em [CHECKLIST.md](CHECKLIST.md).
 
@@ -229,7 +233,6 @@ O desenho completo e as decisões de UX estão em [docs/DESIGN.md](docs/DESIGN.m
 
 ```sh
 cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
-cargo test -- --ignored lsp     # testes contra servidores de linguagem reais
 ```
 
 - O CI roda fmt, clippy e testes a cada push.

@@ -625,7 +625,6 @@ pub fn conclude(herdr: &Herdr, inv: &Inventory) -> Result<Vec<String>, String> {
         done.push(format!("compose {} parado", inv.compose_project));
     }
     for wt in &inv.worktrees {
-        crate::lsp::stop(&wt.path);
         if wt.path.exists() {
             git_err(
                 &wt.repo,

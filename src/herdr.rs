@@ -232,7 +232,7 @@ fn parse_agents(mut result: Value) -> io::Result<Vec<Agent>> {
     Ok(serde_json::from_value(result["agents"].take())?)
 }
 
-fn in_path(bin: &str) -> bool {
+pub fn in_path(bin: &str) -> bool {
     std::env::var_os("PATH")
         .is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(bin).is_file()))
 }
