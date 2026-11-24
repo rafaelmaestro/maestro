@@ -465,7 +465,12 @@ impl Remote {
                 "http",
                 &target,
             ])
-            .args(["--inspect=false", "--log", "stdout", "--log-format", "json"])
+            .args([
+                "--inspect=false",
+                "--config",
+                &ngrok_config(server.addr.port())?,
+            ])
+            .args(["--log", "stdout", "--log-format", "json"])
             .process_group(0)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -513,6 +518,7 @@ impl Remote {
             other => {
                 let _ = kill_group(group);
                 let _ = reaped.join();
+                let _ = std::fs::remove_file(extra_config(server.addr.port()));
                 let stderr = last_err.lock().unwrap().clone();
                 let why = match other {
                     Ok(Err(e)) if !e.is_empty() => e,
@@ -540,6 +546,27 @@ impl Remote {
     }
 }
 
+/// A config do usuário (authtoken) mais uma que desliga a interface web local do agente (`127.0.0.1:4040`),
+/// que exporia a URL pública a qualquer processo da máquina.
+fn ngrok_config(port: u16) -> Result<String, String> {
+    let extra = extra_config(port);
+    std::fs::write(&extra, "version: \"3\"\nagent:\n  web_addr: false\n")
+        .map_err(|e| e.to_string())?;
+    let user = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
+        .map(|d| d.join("ngrok/ngrok.yml"))
+        .filter(|p| p.is_file());
+    Ok(match user {
+        Some(u) => format!("{},{}", u.display(), extra.display()),
+        None => extra.display().to_string(),
+    })
+}
+
+fn extra_config(port: u16) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("maestro-ngrok-{}-{port}.yml", std::process::id()))
+}
+
 fn kill_group(group: u32) -> io::Result<()> {
     std::process::Command::new("kill")
         .args(["-TERM", "--", &format!("-{group}")])
@@ -551,6 +578,7 @@ fn kill_group(group: u32) -> io::Result<()> {
 impl Drop for Remote {
     fn drop(&mut self) {
         let _ = kill_group(self.group);
+        let _ = std::fs::remove_file(extra_config(self.server.addr.port()));
     }
 }
 
@@ -755,10 +783,8 @@ mod tests {
                 .map(|d| {
                     d.flatten()
                         .map(|e| {
-                            (
-                                e.file_name(),
-                                e.metadata().ok().and_then(|m| m.modified().ok()),
-                            )
+                            // só nomes: o Maestro de verdade grava aqui o tempo todo
+                            e.file_name()
                         })
                         .collect()
                 })
@@ -940,12 +966,23 @@ mod tests {
         assert!(r.pair_url().starts_with("https://abc.ngrok-free.app/#t="));
         let args = std::fs::read_to_string(&log).unwrap();
         let pid = args.split_whitespace().next().unwrap().to_string();
+        let port = r.server.addr.port();
         assert!(
-            args.contains(&format!(
-                "http 127.0.0.1:{} --inspect=false --log stdout --log-format json",
-                r.server.addr.port()
-            )),
+            args.contains(&format!("http 127.0.0.1:{port} --inspect=false --config ")),
             "{args}"
+        );
+        assert!(args.ends_with("--log stdout --log-format json\n"), "{args}");
+        let config = args
+            .split("--config ")
+            .nth(1)
+            .unwrap()
+            .split_whitespace()
+            .next()
+            .unwrap();
+        let extra = config.rsplit(',').next().unwrap();
+        assert_eq!(
+            std::fs::read_to_string(extra).unwrap(),
+            "version: \"3\"\nagent:\n  web_addr: false\n"
         );
         assert!(alive(&pid));
         drop(r);

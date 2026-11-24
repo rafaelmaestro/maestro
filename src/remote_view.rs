@@ -17,8 +17,10 @@ pub fn left(d: Duration) -> String {
 }
 
 /// Cada linha vira faixas de módulos iguais: bem menos elementos que um `div` por módulo.
-fn qr(m: &[Vec<bool>], size: f32) -> Div {
-    let cell = size / m.len().max(1) as f32;
+/// Módulo com pixels inteiros: tamanho fracionário borra as bordas e a câmera erra a leitura.
+fn qr(m: &[Vec<bool>], target: f32) -> Div {
+    let cell = (target / m.len().max(1) as f32).floor().max(2.);
+    let size = cell * m.len() as f32;
     let mut col = div()
         .flex()
         .flex_col()
@@ -77,6 +79,7 @@ pub fn dialog(t: &Theme, url: &str, code: &[Vec<bool>], remaining: Duration, act
                         .text_size(px(12.))
                         .text_color(t.muted)
                         .child("Leia com a câmera do celular. O link pareia um aparelho só.")
+                        .child("Se o ngrok mostrar um aviso, toque em Visit Site e leia o QR de novo.")
                         .child(div().font_family(t.mono.clone()).text_color(t.fg).child(url.to_string()))
                         .child(format!("desliga em {} sem uso · no máximo 8 h", left(remaining))),
                 ),
