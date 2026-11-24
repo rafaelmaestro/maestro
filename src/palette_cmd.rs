@@ -76,6 +76,10 @@ pub enum Cmd {
     /// `None`: a aba atual
     CloseWork(Option<usize>),
     NextWork(i32),
+    /// o acesso remoto pelo celular: ligar, mostrar o QR, desligar
+    RemoteOn,
+    RemoteShow,
+    RemoteOff,
 }
 
 #[derive(Clone)]

@@ -458,10 +458,11 @@ Verificado em 2026-10-15: incremental num clone do email-service desde `74cf8d2`
 ## Acesso remoto (celular)
 
 - [x] Protótipo: "Celular: ligar acesso remoto" na paleta (apagado sem `ngrok`), diálogo do QR com Parear de novo e Desligar, "📱 remoto · 2 h 00" na barra de status; tela do celular (lista com fila, feature com pane, `1 Sim · 2 Sempre · 3 Não · ⏎ · Esc` e prompt, "Leia o QR no Maestro")
-- [ ] Servidor local (`127.0.0.1`) com token de uso único, cookie de sessão e expiração (2 h sem uso, 8 h no máximo)
-- [ ] Proxy para o herdr (`agent.list`, `agent.read`, `agent.send_keys`, `agent.prompt`) e página do celular
-- [ ] ngrok (`--inspect=false`, morto ao fechar), QR, indicador e README "Celular"
+- [x] Servidor local (`127.0.0.1`) com token de uso único, cookie de sessão e expiração (2 h sem uso, 8 h no máximo)
+- [x] Proxy para o herdr (`agent.list`, `agent.read`, `agent.send_keys`, `agent.prompt`) e página do celular
+- [x] ngrok (`--inspect=false`, morto ao fechar), QR, indicador e README "Celular"
 - [ ] Ponta a ponta com o celular no 4G
+- Desvio: o "Ver como fica no celular" do diálogo é só do protótipo (demonstração); o app não tem.
 - Extensão do protótipo: a tela do celular não existia; usa os mesmos tokens do `:root`. Publicado em claude.ai/artifact/N8zbGP664BMZGS6fxJCnDP
 
 ## Backlog (não entra sem decisão)

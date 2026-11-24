@@ -114,6 +114,20 @@ O Maestro não tem editor próprio: ele abre o que você já usa.
 - Cada item diz **por que** apareceu e **o que pode afetar**.
 - **Resumo do dia** na primeira abertura de cada dia.
 
+### Celular (acesso remoto)
+
+- **Celular: ligar acesso remoto** (paleta) sobe um servidor só em `127.0.0.1` e um túnel HTTPS do [ngrok](https://ngrok.com) até ele, e mostra um QR. A câmera do celular abre o painel no navegador, sem app.
+- No celular: as features com a fila de quem **precisa de você** no topo, as últimas linhas do terminal do Claude de cada uma, os botões **1 Sim · 2 Sempre · 3 Não · ⏎ · Esc** para responder permissão e pergunta, e uma caixa de prompt para o Claude da feature.
+- Fica de fora de propósito: terminal livre, revisão, MRs e Nova feature.
+- **📱 remoto** na barra de status mostra quanto falta para desligar. O clique reabre o QR, **Parear de novo** derruba o celular anterior e **Desligar** fecha o túnel.
+- **Segurança:**
+  - O acesso começa desligado a cada abertura do Maestro.
+  - O QR pareia um aparelho só: o token vai no `#` da URL e vale uma vez. Depois o celular fica com um cookie `HttpOnly`.
+  - O acesso desliga sozinho depois de 2 h sem uso ou 8 h ligado. Fechar o Maestro também derruba o túnel.
+  - Quem tem a sessão manda prompts aos seus Claudes, e prompt vira comando na sua máquina.
+  - O ngrok termina o HTTPS nos servidores dele e vê o tráfego (prompts e saída do terminal).
+  - Numa máquina da empresa, confira a política de segurança antes de ligar.
+
 ### PRCs
 
 <img src="docs/media/prcs.png" alt="Board de PRCs com as colunas do Jira" width="100%">
@@ -139,6 +153,13 @@ git clone git@github.com:rafaelmaestro/maestro.git && cd maestro
 ./scripts/deps.sh          # pacotes do GPUI, rustup e checagem do Vulkan
 cargo build --release
 ./scripts/desktop.sh       # ícone e atalho no menu/dock
+```
+
+**Celular (opcional):** instale o [ngrok](https://ngrok.com/download) e configure o authtoken da sua conta:
+
+```sh
+ngrok config add-authtoken 'SEU_TOKEN'
+ngrok config check
 ```
 
 **News (opcional):** gere um token pessoal em [daily.dev/settings/api](https://daily.dev/settings/api) e salve:
