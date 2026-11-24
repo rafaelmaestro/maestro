@@ -1,6 +1,5 @@
 //! Acesso remoto pelo celular: HTTP mínimo em `127.0.0.1`, pareamento por token de uso único e sessão por cookie.
 //! URL, token e cookie nunca vão a log.
-#![allow(dead_code)] // a UI liga isto na PR do ngrok
 
 use std::{
     io::{self, BufRead, BufReader, Read, Write},
@@ -405,8 +404,17 @@ impl Server {
         Ok((Self { addr, auth, stop }, token))
     }
 
-    pub fn expired(&self) -> bool {
-        self.auth.lock().unwrap().expired(Instant::now())
+    /// Por que desligar agora, se for hora.
+    pub fn expiry(&self) -> Option<&'static str> {
+        let a = self.auth.lock().unwrap();
+        let now = Instant::now();
+        if now.duration_since(a.started) >= TTL {
+            Some("Acesso remoto desligado: chegou ao limite de 8 h")
+        } else if a.expired(now) {
+            Some("Acesso remoto desligado por inatividade")
+        } else {
+            None
+        }
     }
 
     pub fn left(&self) -> Duration {
@@ -423,6 +431,148 @@ impl Drop for Server {
         self.stop.store(true, Ordering::SeqCst);
         let _ = TcpStream::connect(self.addr);
     }
+}
+
+/// O túnel e o servidor juntos: existe enquanto o acesso remoto está ligado.
+pub struct Remote {
+    pub server: Server,
+    url: String,
+    token: String,
+    group: u32,
+}
+
+/// O ngrok roda sob um `sh` vigia, num grupo de processos próprio: o vigia mata o ngrok quando o Maestro
+/// morre por qualquer caminho (fechar a janela, crash), sem depender de gancho de saída.
+const WATCH: &str = r#"p=$1; shift; "$@" & n=$!; while kill -0 "$p" 2>/dev/null && kill -0 "$n" 2>/dev/null; do sleep 1; done; kill "$n" 2>/dev/null"#;
+
+impl Remote {
+    /// Sobe o servidor e o `ngrok` (`bin`) e espera a URL pública. Bloqueia: chamar fora da thread da UI.
+    pub fn start(
+        bin: &str,
+        call: impl Fn(&str, serde_json::Value) -> io::Result<serde_json::Value> + Send + 'static,
+    ) -> Result<Self, String> {
+        use std::os::unix::process::CommandExt;
+        use std::process::{Command, Stdio};
+        let (server, token) = Server::start(call).map_err(|e| e.to_string())?;
+        let target = format!("127.0.0.1:{}", server.addr.port());
+        let mut child = Command::new("sh")
+            .args([
+                "-c",
+                WATCH,
+                "sh",
+                &std::process::id().to_string(),
+                bin,
+                "http",
+                &target,
+            ])
+            .args(["--inspect=false", "--log", "stdout", "--log-format", "json"])
+            .process_group(0)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("ngrok: {e}"))?;
+        let group = child.id();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let out = child.stdout.take().unwrap();
+        // a saída do ngrok é lida até o fim (cano cheio travaria o túnel) e jogada fora: nada vai a arquivo
+        std::thread::spawn(move || {
+            let mut tx = Some(tx);
+            let mut err = String::new();
+            for line in BufReader::new(out).lines().map_while(Result::ok) {
+                let v: serde_json::Value = serde_json::from_str(&line).unwrap_or_default();
+                if let Some(u) = v["url"].as_str().filter(|u| u.starts_with("https://")) {
+                    if let Some(tx) = tx.take() {
+                        let _ = tx.send(Ok(u.to_string()));
+                    }
+                } else if let Some(e) = v["err"].as_str().filter(|e| *e != "<nil>") {
+                    err = e.to_string();
+                }
+            }
+            if let Some(tx) = tx {
+                let _ = tx.send(Err(err));
+            }
+        });
+        let last_err = Arc::new(Mutex::new(String::new()));
+        let (e_out, e_last) = (child.stderr.take().unwrap(), last_err.clone());
+        std::thread::spawn(move || {
+            for line in BufReader::new(e_out).lines().map_while(Result::ok) {
+                if !line.trim().is_empty() {
+                    *e_last.lock().unwrap() = line;
+                }
+            }
+        });
+        let reaped = std::thread::spawn(move || child.wait());
+        match rx.recv_timeout(Duration::from_secs(20)) {
+            Ok(Ok(url)) => Ok(Self {
+                server,
+                url,
+                token,
+                group,
+            }),
+            other => {
+                let _ = kill_group(group);
+                let _ = reaped.join();
+                let stderr = last_err.lock().unwrap().clone();
+                let why = match other {
+                    Ok(Err(e)) if !e.is_empty() => e,
+                    Err(_) => "não deu a URL em 20 s".into(),
+                    _ if !stderr.is_empty() => stderr,
+                    _ => "saiu sem dar a URL".into(),
+                };
+                Err(format!("ngrok: {}", why.replace("https://", "")))
+            }
+        }
+    }
+
+    /// A URL sem o token, para mostrar.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    /// O que vai no QR: o token no fragmento, que não sai do navegador.
+    pub fn pair_url(&self) -> String {
+        format!("{}/#t={}", self.url, self.token)
+    }
+
+    pub fn repair(&mut self) {
+        self.token = self.server.repair();
+    }
+}
+
+fn kill_group(group: u32) -> io::Result<()> {
+    std::process::Command::new("kill")
+        .args(["-TERM", "--", &format!("-{group}")])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(drop)
+}
+
+impl Drop for Remote {
+    fn drop(&mut self) {
+        let _ = kill_group(self.group);
+    }
+}
+
+/// A matriz do QR (`true` = módulo escuro), já com a borda branca.
+pub fn qr(text: &str) -> Vec<Vec<bool>> {
+    let Ok(code) = qrcode::QrCode::new(text.as_bytes()) else {
+        return Vec::new();
+    };
+    let w = code.width();
+    let colors = code.into_colors();
+    let quiet = 2;
+    (0..w + 2 * quiet)
+        .map(|y| {
+            (0..w + 2 * quiet)
+                .map(|x| {
+                    (quiet..w + quiet).contains(&x)
+                        && (quiet..w + quiet).contains(&y)
+                        && colors[(y - quiet) * w + (x - quiet)] == qrcode::Color::Dark
+                })
+                .collect()
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -752,6 +902,119 @@ mod tests {
             404
         );
         assert!(log.lock().unwrap().iter().all(|(m, _)| m == "agent.list"));
+    }
+
+    fn fake_ngrok(name: &str, body: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir =
+            std::env::temp_dir().join(format!("maestro-remote-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("ngrok");
+        let log = dir.join("args");
+        std::fs::write(
+            &bin,
+            format!("#!/bin/sh\necho \"$$ $*\" > '{}'\n{body}\n", log.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (bin, log)
+    }
+
+    fn alive(pid: &str) -> bool {
+        std::process::Command::new("kill")
+            .args(["-0", pid])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    }
+
+    #[test]
+    fn ngrok_da_a_url_sem_inspetor_e_morre_no_drop() {
+        let (bin, log) = fake_ngrok(
+            "ok",
+            r#"echo '{"lvl":"info","msg":"started tunnel","url":"https://abc.ngrok-free.app"}'; exec sleep 30"#,
+        );
+        let r = Remote::start(bin.to_str().unwrap(), no_herdr).unwrap();
+        assert_eq!(r.url(), "https://abc.ngrok-free.app");
+        assert!(r.pair_url().starts_with("https://abc.ngrok-free.app/#t="));
+        let args = std::fs::read_to_string(&log).unwrap();
+        let pid = args.split_whitespace().next().unwrap().to_string();
+        assert!(
+            args.contains(&format!(
+                "http 127.0.0.1:{} --inspect=false --log stdout --log-format json",
+                r.server.addr.port()
+            )),
+            "{args}"
+        );
+        assert!(alive(&pid));
+        drop(r);
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(!alive(&pid));
+        let _ = std::fs::remove_dir_all(bin.parent().unwrap());
+    }
+
+    #[test]
+    fn ngrok_que_falha_vira_erro_legivel() {
+        let (bin, _) = fake_ngrok(
+            "err",
+            r#"echo '{"lvl":"eror","msg":"session closing","err":"authentication failed: Your authtoken is invalid"}'; echo 'ERROR: authtoken inválido' >&2; exit 1"#,
+        );
+        let e = Remote::start(bin.to_str().unwrap(), no_herdr)
+            .err()
+            .unwrap();
+        assert_eq!(e, "ngrok: authentication failed: Your authtoken is invalid");
+        let (bin2, _) = fake_ngrok("stderr", "echo 'ERROR: sem rede' >&2; exit 1");
+        assert_eq!(
+            Remote::start(bin2.to_str().unwrap(), no_herdr)
+                .err()
+                .unwrap(),
+            "ngrok: ERROR: sem rede"
+        );
+        let _ = std::fs::remove_dir_all(bin.parent().unwrap());
+        let _ = std::fs::remove_dir_all(bin2.parent().unwrap());
+    }
+
+    #[test]
+    fn vigia_mata_o_ngrok_quando_o_maestro_morre() {
+        let (bin, log) = fake_ngrok("watch", "exec sleep 30");
+        let mut maestro = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let mut watch = std::process::Command::new("sh")
+            .args([
+                "-c",
+                WATCH,
+                "sh",
+                &maestro.id().to_string(),
+                bin.to_str().unwrap(),
+            ])
+            .spawn()
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        let pid = std::fs::read_to_string(&log)
+            .unwrap()
+            .split_whitespace()
+            .next()
+            .unwrap()
+            .to_string();
+        assert!(alive(&pid));
+        maestro.kill().unwrap();
+        maestro.wait().unwrap();
+        watch.wait().unwrap();
+        assert!(!alive(&pid));
+        let _ = std::fs::remove_dir_all(bin.parent().unwrap());
+    }
+
+    #[test]
+    fn qr_tem_borda_e_os_quadrados_de_canto() {
+        let m = qr("https://abc.ngrok-free.app/#t=0123456789abcdef0123456789abcdef");
+        let n = m.len();
+        assert!(n > 25 && m.iter().all(|r| r.len() == n));
+        assert!(!m[0][0] && !m[1][1]);
+        assert!(m[2][2] && m[2][8] && m[8][2] && !m[3][3] && m[4][4]);
+        assert!(m[2][n - 3] && m[n - 3][2]);
     }
 
     #[test]

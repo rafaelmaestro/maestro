@@ -129,6 +129,12 @@ pub struct Shell {
     toast_seq: usize,
     want_dialog: bool,
     left: bool,
+    /// o acesso remoto ligado, o QR dele e o diálogo na tela
+    remote: Option<crate::remote::Remote>,
+    remote_qr: Vec<Vec<bool>>,
+    remote_dlg: bool,
+    remote_busy: bool,
+    _remote_tick: Option<Task<()>>,
 }
 
 /// As dicas da inbox e do MR (`HINTS.mrs`/`HINTS.mr` do protótipo).
@@ -532,6 +538,11 @@ impl Shell {
             toast_seq: 0,
             want_dialog: false,
             left: true,
+            remote: None,
+            remote_qr: Vec::new(),
+            remote_dlg: false,
+            remote_busy: false,
+            _remote_tick: None,
         }
     }
 
@@ -668,6 +679,7 @@ impl Shell {
                 }
             }
             items.extend(self.task_items(cx));
+            items.extend(self.remote_items());
             self.open_palette(
                 items,
                 "Comando ou nome da feature…",
@@ -818,6 +830,152 @@ impl Shell {
         if let Some(m) = &self.mrs {
             m.update(cx, |m, cx| m.open_key(key, cx));
         }
+    }
+
+    /// Os comandos "Celular: …" da paleta, conforme o acesso está ligado ou não.
+    fn remote_items(&self) -> Vec<palette_cmd::Item> {
+        let item = |title: &str, key: &str, cmd: Option<Cmd>| palette_cmd::Item {
+            title: title.into(),
+            key: key.into(),
+            cmd,
+            tag: None,
+        };
+        if self.remote.is_some() {
+            return vec![
+                item(
+                    "Celular: mostrar QR de pareamento",
+                    "",
+                    Some(Cmd::RemoteShow),
+                ),
+                item("Celular: desligar acesso remoto", "", Some(Cmd::RemoteOff)),
+            ];
+        }
+        if herdr::in_path("ngrok") {
+            vec![item(
+                "Celular: ligar acesso remoto",
+                "",
+                Some(Cmd::RemoteOn),
+            )]
+        } else {
+            vec![item(
+                "Celular: ligar acesso remoto",
+                "ngrok não encontrado no PATH",
+                None,
+            )]
+        }
+    }
+
+    fn remote_on(&mut self, cx: &mut Context<Self>) {
+        if self.remote.is_some() {
+            self.remote_dlg = true;
+            return cx.notify();
+        }
+        if self.remote_busy {
+            return;
+        }
+        let Some(herdr) = self.sidebar.as_ref().map(|s| s.read(cx).herdr()) else {
+            return self.toast("O acesso remoto precisa do herdr".into(), cx);
+        };
+        self.remote_busy = true;
+        self.toast("Ligando o acesso remoto…".into(), cx);
+        cx.spawn(async move |this, cx| {
+            let r = cx
+                .background_executor()
+                .spawn(async move {
+                    crate::remote::Remote::start("ngrok", move |m, p| herdr.call(m, p))
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.remote_busy = false;
+                match r {
+                    Ok(r) => {
+                        this.remote_qr = crate::remote::qr(&r.pair_url());
+                        this.remote = Some(r);
+                        this.remote_dlg = true;
+                        this.remote_tick(cx);
+                        cx.notify();
+                    }
+                    Err(e) => this.toast(e, cx),
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// A cada 30 s: os minutos da barra de status e o desligamento sozinho.
+    fn remote_tick(&mut self, cx: &mut Context<Self>) {
+        self._remote_tick = Some(cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_secs(30))
+                    .await;
+                let alive = this.update(cx, |this, cx| {
+                    match this.remote.as_ref().map(|r| r.server.expiry()) {
+                        Some(Some(why)) => this.remote_off(Some(why), cx),
+                        Some(None) => cx.notify(),
+                        None => {}
+                    }
+                    this.remote.is_some()
+                });
+                if !alive.unwrap_or(false) {
+                    break;
+                }
+            }
+        }));
+    }
+
+    fn remote_off(&mut self, why: Option<&str>, cx: &mut Context<Self>) {
+        if self.remote.take().is_none() {
+            return;
+        }
+        self.remote_qr.clear();
+        self.remote_dlg = false;
+        self.toast(
+            why.unwrap_or("Acesso remoto desligado. O link do celular parou de responder.")
+                .into(),
+            cx,
+        );
+        cx.notify();
+    }
+
+    fn remote_overlay(&self, cx: &mut Context<Self>) -> Div {
+        let t = &self.theme;
+        let Some(r) = &self.remote else {
+            return div();
+        };
+        let acts = div()
+            .flex()
+            .gap(px(8.))
+            .items_center()
+            .child(
+                button(t, "rem-re", "Parear de novo", false).on_click(cx.listener(
+                    |this, _, _, cx| {
+                        if let Some(r) = &mut this.remote {
+                            r.repair();
+                            this.remote_qr = crate::remote::qr(&r.pair_url());
+                        }
+                        this.toast(
+                            "QR novo. O aparelho pareado antes foi desconectado.".into(),
+                            cx,
+                        );
+                    },
+                )),
+            )
+            .child(div().flex_1())
+            .child(
+                button(t, "rem-off", "Desligar", false)
+                    .text_color(rgb(0xff5555))
+                    .on_click(cx.listener(|this, _, _, cx| this.remote_off(None, cx))),
+            )
+            .child(
+                button(t, "rem-x", "Fechar", false)
+                    .child(self.kbd("Esc"))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.remote_dlg = false;
+                        cx.notify();
+                    })),
+            );
+        crate::remote_view::dialog(t, r.url(), &self.remote_qr, r.server.left(), acts)
     }
 
     pub fn toast(&mut self, msg: String, cx: &mut Context<Self>) {
@@ -2765,6 +2923,12 @@ impl Shell {
                 self.tunnels.update(cx, |t, cx| t.toggle(&name, cx));
                 return cx.notify();
             }
+            Cmd::RemoteOn => return self.remote_on(cx),
+            Cmd::RemoteShow => {
+                self.remote_dlg = self.remote.is_some();
+                return cx.notify();
+            }
+            Cmd::RemoteOff => return self.remote_off(None, cx),
             Cmd::TunnelsOn => {
                 self.tunnels.update(cx, |t, cx| t.start_all(cx));
             }
@@ -3818,6 +3982,21 @@ impl Shell {
                             .on_click(cx.listener(|this, _, w, cx| this.run(Cmd::Db, w, cx))),
                     );
                 }
+                if let Some(r) = &self.remote {
+                    bar = bar.child(
+                        cell()
+                            .id("st-rem")
+                            .cursor_pointer()
+                            .text_color(t.cyan)
+                            .child(format!(
+                                "📱 remoto · {}",
+                                crate::remote_view::left(r.server.left())
+                            ))
+                            .on_click(
+                                cx.listener(|this, _, w, cx| this.run(Cmd::RemoteShow, w, cx)),
+                            ),
+                    );
+                }
                 bar = bar.child(
                     cell().child(format!("hoje: US$ {}", crate::sidebar::brl(s.today_cost()))),
                 );
@@ -4149,6 +4328,9 @@ impl Render for Shell {
                 if this.help {
                     this.help = false;
                     cx.notify();
+                } else if this.remote_dlg {
+                    this.remote_dlg = false;
+                    cx.notify();
                 } else if this.tour.is_some() {
                     this.end_tour(cx);
                 } else if !overlay && this.mascot.as_ref().is_some_and(|m| !m.2) {
@@ -4301,6 +4483,33 @@ impl Render for Shell {
                     .justify_center()
                     .child(k)
             }))
+            .when(self.remote_dlg && self.remote.is_some(), |d| {
+                d.child(
+                    div()
+                        .id("remote-scrim")
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full()
+                        .flex()
+                        .justify_center()
+                        .items_start()
+                        .pt(px(60.))
+                        .px(px(16.))
+                        .bg(rgba(0x0a0a1080))
+                        .occlude()
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.remote_dlg = false;
+                            cx.notify();
+                        }))
+                        .child(
+                            self.remote_overlay(cx)
+                                .id("remote-dlg")
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                .on_click(|_, _, cx| cx.stop_propagation()),
+                        ),
+                )
+            })
             .when(self.help, |d| {
                 d.child(
                     div()
