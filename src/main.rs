@@ -36,6 +36,7 @@ mod perms;
 mod prc;
 mod prc_view;
 mod preflight;
+mod remote;
 mod review;
 mod session;
 mod shell;
