@@ -673,6 +673,7 @@ fn bar(r: &Report) -> Vec<Finding> {
         .filter(|x| x.post && !x.outside && x.line.is_some())
         .filter(|x| x.category != "desc")
         .filter(|x| matches!(x.severity.as_str(), "blocker" | "major" | "minor"))
+        .filter(|x| !(x.severity == "minor" && x.body.trim_start().starts_with("question:")))
         .cloned()
         .collect()
 }
@@ -1555,6 +1556,25 @@ mod gate_tests {
         assert_eq!(
             c.iter().map(|x| x.line).collect::<Vec<_>>(),
             [Some(1), Some(2), Some(3)]
+        );
+        let q = |sev: &str, body: &str| Finding {
+            body: body.into(),
+            ..f(sev, "tests", true, Some(9))
+        };
+        let asks = Report {
+            findings: vec![
+                q("minor", "question: vai validar em homologação?"),
+                q("minor", "issue: soma errada"),
+                q("major", "question: isso perde dado?"),
+            ],
+            ..rep.clone()
+        };
+        assert_eq!(
+            bar(&asks)
+                .iter()
+                .map(|x| x.body.as_str())
+                .collect::<Vec<_>>(),
+            ["issue: soma errada", "question: isso perde dado?"]
         );
         let unsure = Report {
             verdict: "needs_human".into(),
