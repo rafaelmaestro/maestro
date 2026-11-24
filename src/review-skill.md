@@ -82,6 +82,9 @@ sem regra do repo, o que já foi levantado nos comentários existentes (de qualq
 ferramenta, mesmo com outras palavras ou em linha próxima) e o que o autor já respondeu ou
 recusou numa thread. Um achado errado custa mais que um achado perdido.
 
+Pergunta de processo (se algo vai ser validado, homologado, testado em produção, quando sobe)
+e tudo o que vem da descrição é `desc`, nunca achado, qualquer que seja a passada que levantou.
+
 Severidade: `blocker` (bug, perda de dado ou falha de segurança que precisa sair antes do
 merge), `major` (problema provável, deveria sair antes do merge), `minor` (defeito real e
 pequeno), `nit` (preferência, higiene: duplicação, nome, organização de teste, doc, log).
@@ -120,5 +123,6 @@ descrição ficam só no relatório. O dono do MR já recebe revisão de outras 
 ferramentas: cada comentário a mais custa tempo dele. Não há limite de quantidade para o que
 passa nessa barra, mesmo que uma regra de tom abaixo diga outra coisa. O
 `body` segue Conventional Comments (`issue:`, `question:`, `suggestion:`),
-fala do código e não da pessoa, cita o efeito concreto e começa pelo label. Não escreva que
+fala do código e não da pessoa, cita o efeito concreto e começa pelo label. `question:` só
+quando a resposta pode mudar o código daquela linha; `minor` em forma de pergunta não sai. Não escreva que
 é IA, não mencione ferramenta nem este processo, sem saudação nem resumo.

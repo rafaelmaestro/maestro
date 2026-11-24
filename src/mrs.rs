@@ -656,11 +656,24 @@ pub fn seen_file() -> PathBuf {
 pub fn inbox(me: &str, group: &str) -> [Result<Vec<Row>, String>; 3] {
     let q = "state=opened&per_page=100";
     [
-        read(
-            &format!("merge_requests?scope=all&{q}&reviewer_username={me}"),
-            false,
-        )
-        .map(|v| rows(&v)),
+        ["reviewer", "assignee"]
+            .iter()
+            .map(|k| {
+                read(
+                    &format!("merge_requests?scope=all&{q}&{k}_username={me}"),
+                    false,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(|vs| {
+                let mut out: Vec<Row> = Vec::new();
+                for r in vs.iter().flat_map(rows) {
+                    if r.who != format!("@{me}") && !out.iter().any(|o| o.key() == r.key()) {
+                        out.push(r);
+                    }
+                }
+                out
+            }),
         read(
             &format!("merge_requests?scope=all&{q}&author_username={me}"),
             false,
