@@ -225,7 +225,120 @@ impl Auth {
 /// Chamada ao herdr: `(método, params)`. Injetada para o roteamento ser testável sem socket.
 pub type Call<'a> = &'a dyn Fn(&str, serde_json::Value) -> io::Result<serde_json::Value>;
 
-pub fn handle(req: &Request, auth: &Mutex<Auth>, now: Instant, _call: Call) -> Response {
+const KEYS: &[&str] = &["1", "2", "3", "enter", "esc"];
+const GONE: &str = "O Claude não está mais rodando nesta feature";
+
+fn unescape(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        match (
+            b[i],
+            s.get(i + 1..i + 3)
+                .and_then(|h| u8::from_str_radix(h, 16).ok()),
+        ) {
+            (b'%', Some(x)) => {
+                out.push(x);
+                i += 3;
+            }
+            (c, _) => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// O que o celular vê de cada agente: a feature (branch da worktree), o repo, o estado e o título do Claude.
+fn summary(a: &serde_json::Value, labels: &serde_json::Value) -> serde_json::Value {
+    let cwd = std::path::Path::new(a["cwd"].as_str().unwrap_or(""));
+    let root = crate::herdr::repo_root(cwd);
+    let label = root
+        .and_then(crate::herdr::branch)
+        .or_else(|| {
+            labels.as_array()?.iter().find_map(|w| {
+                (w["workspace_id"] == a["workspace_id"])
+                    .then(|| w["label"].as_str().map(str::to_string))?
+            })
+        })
+        .unwrap_or_else(|| a["agent"].as_str().unwrap_or("").to_string());
+    let repo = root
+        .map(crate::herdr::main_repo)
+        .and_then(|r| r.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_default();
+    let title = a["terminal_title_stripped"]
+        .as_str()
+        .unwrap_or("")
+        .trim_start_matches(|c: char| !c.is_alphanumeric());
+    serde_json::json!({
+        "pane": a["pane_id"],
+        "label": label,
+        "repo": repo,
+        "status": a["agent_status"],
+        "title": title,
+    })
+}
+
+fn api(req: &Request, call: Call) -> io::Result<Response> {
+    let list = call("agent.list", serde_json::json!({}))?;
+    let agents = list["agents"].as_array().cloned().unwrap_or_default();
+    let rest = &req.path["/api/agents".len()..];
+    if req.method == "GET" && rest.is_empty() {
+        let labels = call("workspace.list", serde_json::json!({}))
+            .map(|mut w| w["workspaces"].take())
+            .unwrap_or_default();
+        let out: Vec<_> = agents.iter().map(|a| summary(a, &labels)).collect();
+        return Ok(Response::json(&serde_json::json!({ "agents": out })));
+    }
+    let Some((pane, action)) = rest.strip_prefix('/').and_then(|r| r.rsplit_once('/')) else {
+        return Ok(Response::status(404));
+    };
+    let pane = unescape(pane);
+    if !agents.iter().any(|a| a["pane_id"] == pane.as_str()) {
+        return Ok(Response::new(404, "text/plain; charset=utf-8", GONE));
+    }
+    let body: serde_json::Value = serde_json::from_slice(&req.body).unwrap_or_default();
+    match (req.method.as_str(), action) {
+        ("GET", "screen") => {
+            let r = call(
+                "agent.read",
+                serde_json::json!({ "target": pane, "source": "recent_unwrapped", "lines": 60, "format": "text" }),
+            )?;
+            Ok(Response::json(
+                &serde_json::json!({ "text": r["read"]["text"] }),
+            ))
+        }
+        ("POST", "keys") => {
+            let Some(key) = body["key"].as_str().filter(|k| KEYS.contains(k)) else {
+                return Ok(Response::status(400));
+            };
+            call(
+                "agent.send_keys",
+                serde_json::json!({ "target": pane, "keys": [key] }),
+            )?;
+            Ok(Response::json(&serde_json::json!({ "ok": true })))
+        }
+        ("POST", "prompt") => {
+            let Some(text) = body["text"]
+                .as_str()
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+            else {
+                return Ok(Response::status(400));
+            };
+            call(
+                "agent.prompt",
+                serde_json::json!({ "target": pane, "text": text }),
+            )?;
+            Ok(Response::json(&serde_json::json!({ "ok": true })))
+        }
+        _ => Ok(Response::status(404)),
+    }
+}
+
+pub fn handle(req: &Request, auth: &Mutex<Auth>, now: Instant, call: Call) -> Response {
     if req.method == "GET" && (req.path == "/" || req.path.starts_with("/?")) {
         return Response::new(200, "text/html; charset=utf-8", PAGE);
     }
@@ -251,7 +364,10 @@ pub fn handle(req: &Request, auth: &Mutex<Auth>, now: Instant, _call: Call) -> R
     if !auth.lock().unwrap().check(req.cookie(), now) {
         return Response::status(401);
     }
-    Response::status(404)
+    if req.path != "/api/agents" && !req.path.starts_with("/api/agents/") {
+        return Response::status(404);
+    }
+    api(req, call).unwrap_or_else(|_| Response::status(502))
 }
 
 pub struct Server {
@@ -510,5 +626,231 @@ mod tests {
         assert!(out.starts_with("HTTP/1.1 200"));
         drop(srv);
         assert_eq!(before, ls());
+    }
+
+    type Log = std::sync::Arc<Mutex<Vec<(String, serde_json::Value)>>>;
+
+    fn fake(log: Log) -> impl Fn(&str, serde_json::Value) -> io::Result<serde_json::Value> {
+        move |m: &str, p: serde_json::Value| {
+            log.lock().unwrap().push((m.to_string(), p));
+            Ok(match m {
+                "agent.list" => serde_json::json!({ "agents": [
+                    { "pane_id": "w1:p1", "workspace_id": "w1", "agent": "claude", "agent_status": "blocked",
+                      "cwd": "/nao/existe", "terminal_title_stripped": "✳ pediu permissão" }
+                ]}),
+                "workspace.list" => {
+                    serde_json::json!({ "workspaces": [{ "workspace_id": "w1", "label": "fix/slack" }] })
+                }
+                "agent.read" => {
+                    serde_json::json!({ "read": { "text": "Do you want to proceed?" } })
+                }
+                _ => serde_json::json!({}),
+            })
+        }
+    }
+
+    fn paired() -> (Mutex<Auth>, String, Instant) {
+        let now = Instant::now();
+        let (a, token) = Auth::new(now);
+        let a = Mutex::new(a);
+        let c = handle(&pair_req(&token), &a, now, &no_herdr)
+            .cookie
+            .unwrap();
+        (a, c, now)
+    }
+
+    fn post(path: &str, cookie: &str, body: &str) -> Request {
+        req(&format!(
+            "POST {path} HTTP/1.1\r\nCookie: s={cookie}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        ))
+    }
+
+    #[test]
+    fn lista_os_agentes_com_a_feature() {
+        let (a, c, now) = paired();
+        let log = Log::default();
+        let r = handle(&with_cookie("/api/agents", &c), &a, now, &fake(log.clone()));
+        assert_eq!(r.status, 200);
+        let v: serde_json::Value = serde_json::from_slice(&r.body).unwrap();
+        assert_eq!(v["agents"][0]["pane"], "w1:p1");
+        assert_eq!(v["agents"][0]["label"], "fix/slack");
+        assert_eq!(v["agents"][0]["status"], "blocked");
+        assert_eq!(v["agents"][0]["title"], "pediu permissão");
+    }
+
+    #[test]
+    fn tela_tecla_e_prompt_vao_ao_pane_do_agente() {
+        let (a, c, now) = paired();
+        let log = Log::default();
+        let f = fake(log.clone());
+        let r = handle(&with_cookie("/api/agents/w1%3Ap1/screen", &c), &a, now, &f);
+        assert_eq!(r.status, 200);
+        assert!(String::from_utf8_lossy(&r.body).contains("proceed"));
+        assert_eq!(
+            handle(
+                &post("/api/agents/w1%3Ap1/keys", &c, r#"{"key":"1"}"#),
+                &a,
+                now,
+                &f
+            )
+            .status,
+            200
+        );
+        assert_eq!(
+            handle(
+                &post(
+                    "/api/agents/w1:p1/prompt",
+                    &c,
+                    r#"{"text":"roda os testes"}"#
+                ),
+                &a,
+                now,
+                &f
+            )
+            .status,
+            200
+        );
+        let log = log.lock().unwrap();
+        let sent: Vec<_> = log.iter().filter(|(m, _)| m != "agent.list").collect();
+        assert_eq!(sent[0].1["target"], "w1:p1");
+        assert_eq!(
+            sent[1],
+            &(
+                "agent.send_keys".to_string(),
+                serde_json::json!({ "target": "w1:p1", "keys": ["1"] })
+            )
+        );
+        assert_eq!(sent[2].1["text"], "roda os testes");
+    }
+
+    #[test]
+    fn recusa_tecla_fora_da_lista_e_pane_que_nao_e_agente() {
+        let (a, c, now) = paired();
+        let log = Log::default();
+        let f = fake(log.clone());
+        assert_eq!(
+            handle(
+                &post("/api/agents/w1:p1/keys", &c, r#"{"key":"ctrl+c"}"#),
+                &a,
+                now,
+                &f
+            )
+            .status,
+            400
+        );
+        let shell = handle(
+            &post("/api/agents/w1:p2/prompt", &c, r#"{"text":"rm -rf /"}"#),
+            &a,
+            now,
+            &f,
+        );
+        assert_eq!(shell.status, 404);
+        assert_eq!(String::from_utf8_lossy(&shell.body), GONE);
+        assert_eq!(
+            handle(&with_cookie("/api/agents/w1:p1/qualquer", &c), &a, now, &f).status,
+            404
+        );
+        assert!(log.lock().unwrap().iter().all(|(m, _)| m == "agent.list"));
+    }
+
+    #[test]
+    fn herdr_fora_vira_502() {
+        let (a, c, now) = paired();
+        assert_eq!(
+            handle(&with_cookie("/api/agents", &c), &a, now, &no_herdr).status,
+            502
+        );
+    }
+}
+
+/// Contra a sessão `maestro-test` com um agente simulado em `w1:p1` (claude → cat) e um shell em `w1:p2`:
+/// `MAESTRO_HERDR_SESSION=maestro-test cargo test -- --ignored remote_herdr`
+#[cfg(test)]
+mod remote_herdr {
+    use super::*;
+
+    fn http(addr: SocketAddr, raw: String) -> (u16, String, String) {
+        let mut c = TcpStream::connect(addr).unwrap();
+        c.write_all(raw.as_bytes()).unwrap();
+        let mut out = String::new();
+        c.read_to_string(&mut out).unwrap();
+        let (head, body) = out.split_once("\r\n\r\n").unwrap();
+        let status = head[9..12].parse().unwrap();
+        (status, head.to_string(), body.to_string())
+    }
+
+    #[test]
+    #[ignore]
+    fn ponta_a_ponta_no_herdr_de_teste() {
+        assert_eq!(
+            std::env::var("MAESTRO_HERDR_SESSION").as_deref(),
+            Ok("maestro-test")
+        );
+        let herdr = crate::herdr::Herdr::from_env().unwrap();
+        let (srv, token) = Server::start(move |m, p| herdr.call(m, p)).unwrap();
+        let body = format!("{{\"token\":\"{token}\"}}");
+        let (st, head, _) = http(
+            srv.addr,
+            format!(
+                "POST /api/pair HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            ),
+        );
+        assert_eq!(st, 200);
+        let cookie = head
+            .split("s=")
+            .nth(1)
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_string();
+        let get = |p: &str| {
+            http(
+                srv.addr,
+                format!("GET {p} HTTP/1.1\r\nCookie: s={cookie}\r\n\r\n"),
+            )
+        };
+        let post = |p: &str, b: &str| {
+            http(
+                srv.addr,
+                format!(
+                    "POST {p} HTTP/1.1\r\nCookie: s={cookie}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{b}",
+                    b.len()
+                ),
+            )
+        };
+
+        let (st, _, list) = get("/api/agents");
+        assert_eq!(st, 200, "{list}");
+        assert!(list.contains("\"label\":\"fix/slack-demo\""), "{list}");
+        assert!(list.contains("\"status\":\"blocked\""), "{list}");
+
+        assert_eq!(
+            post("/api/agents/w1%3Ap1/prompt", r#"{"text":"oi do celular"}"#).0,
+            200
+        );
+        for k in ["1", "enter", "esc"] {
+            assert_eq!(
+                post("/api/agents/w1%3Ap1/keys", &format!("{{\"key\":\"{k}\"}}")).0,
+                200,
+                "{k}"
+            );
+        }
+        std::thread::sleep(Duration::from_millis(500));
+        let (st, _, screen) = get("/api/agents/w1%3Ap1/screen");
+        assert_eq!(st, 200);
+        assert!(screen.contains("oi do celular"), "{screen}");
+
+        assert_eq!(
+            post("/api/agents/w1%3Ap1/keys", r#"{"key":"ctrl+c"}"#).0,
+            400
+        );
+        assert_eq!(
+            post("/api/agents/w1%3Ap2/prompt", r#"{"text":"ls"}"#).0,
+            404
+        );
+        assert_eq!(get("/api/agents/w1%3Ap2/screen").0, 404);
     }
 }
