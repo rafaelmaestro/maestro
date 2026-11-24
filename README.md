@@ -117,6 +117,7 @@ O Maestro não tem editor próprio: ele abre o que você já usa.
 ### Celular (acesso remoto)
 
 - **Celular: ligar acesso remoto** (paleta) sobe um servidor só em `127.0.0.1` e um túnel HTTPS do [ngrok](https://ngrok.com) até ele, e mostra um QR. A câmera do celular abre o painel no navegador, sem app.
+- Na primeira leitura, o ngrok gratuito pode mostrar uma página de aviso: toque em **Visit Site** e leia o QR de novo (o aviso não gasta o token).
 - No celular: as features com a fila de quem **precisa de você** no topo, as últimas linhas do terminal do Claude de cada uma, os botões **1 Sim · 2 Sempre · 3 Não · ⏎ · Esc** para responder permissão e pergunta, e uma caixa de prompt para o Claude da feature.
 - Fica de fora de propósito: terminal livre, revisão, MRs e Nova feature.
 - **📱 remoto** na barra de status mostra quanto falta para desligar. O clique reabre o QR, **Parear de novo** derruba o celular anterior e **Desligar** fecha o túnel.
